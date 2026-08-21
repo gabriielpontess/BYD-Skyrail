@@ -9,7 +9,7 @@ assert.equal(matchesDocument(base,{discipline:'Elétrica'}),false);
 assert.equal(fileChanged(base,base),false);
 assert.equal(fileChanged(base,{...base,revision:'B'}),true);
 
-const files=await Promise.all(['../js/api.js','../js/db.js','../js/sync.js','../sw.js','../supabase/migrations/0001_initial.sql'].map(p=>readFile(new URL(p,import.meta.url),'utf8')));
+const files=await Promise.all(['../js/api.js','../js/db.js','../js/sync.js','../sw.js','../supabase/migrations/20260821154420_initial_byd_skyrail_schema.sql'].map(p=>readFile(new URL(p,import.meta.url),'utf8')));
 const [api,db,sync,sw,migration]=files;
 const source=files.join('\n').toLowerCase();
 assert.doesNotMatch(source,/docinspector_|sky17_|service_role|servicerole|secretkey/);
