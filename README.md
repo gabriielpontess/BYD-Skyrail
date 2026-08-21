@@ -17,4 +17,7 @@ Aplicação independente para consulta de documentação técnica em campo, com 
 4. Inserir esse `auth.users.id` em `public.members` com `role='ADMIN'`.
 5. Preencher `config.js` com URL + publishable key do projeto.
 
-O projeto Supabase standalone foi criado em `sa-east-1` e o schema inicial já foi aplicado. Nunca coloque `service_role`/secret key no frontend.
+O projeto Supabase standalone foi criado em `sa-east-1`, o schema inicial já foi aplicado e o primeiro ADMIN está provisionado. Nunca coloque `service_role`/secret key no frontend.
+
+## Deploy
+O projeto Netlify `byd-skyrail` está vinculado ao repositório `gabriielpontess/BYD-Skyrail`, com `main` como branch de produção. Mudanças do PR standalone devem ser validadas em Deploy Preview antes do merge e do smoke test final no tablet.
