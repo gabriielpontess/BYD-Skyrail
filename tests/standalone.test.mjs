@@ -14,7 +14,9 @@ const paths=[
   '../js/db.js',
   '../js/sync.js',
   '../js/app.js',
+  '../js/ux-adjustments.js',
   '../styles.css',
+  '../ux-adjustments.css',
   '../index.html',
   '../manifest.webmanifest',
   '../sw.js',
@@ -24,7 +26,7 @@ const paths=[
   '../supabase/migrations/20260821175500_optimize_governance_policies.sql'
 ];
 const files=await Promise.all(paths.map(p=>readFile(new URL(p,import.meta.url),'utf8')));
-const [api,db,sync,app,styles,index,manifest,sw,initialMigration,governanceMigration,privateAuthMigration,performanceMigration]=files;
+const [api,db,sync,app,ux,styles,uxStyles,index,manifest,sw,initialMigration,governanceMigration,privateAuthMigration,performanceMigration]=files;
 const source=files.join('\n').toLowerCase();
 assert.doesNotMatch(source,/docinspector_|sky17_|service_role|servicerole|secretkey/);
 
@@ -40,7 +42,9 @@ assert.match(api,/changeOwnPassword/);
 assert.doesNotMatch(api,/remove\(old/);
 assert.match(db,/const META='documents';const FILES='files'/);
 assert.match(sync,/f\.blob\.slice\(0,5\)\.arrayBuffer/);
-assert.match(sw,/const VERSION='1\.1\.0'/);
+assert.match(sw,/const VERSION='1\.1\.1'/);
+assert.match(sw,/ux-adjustments\.css/);
+assert.match(sw,/ux-adjustments\.js/);
 assert.match(sw,/byd-skyrail-/);
 
 // Approved UX: navigable shell, search submit/Enter, role gate and profile.
@@ -56,6 +60,25 @@ assert.match(app,/Conferência \/ Auditoria/);
 assert.match(app,/data-admin-tab="documents"/);
 assert.match(app,/data-admin-tab="users"/);
 assert.match(app,/data-admin-tab="history"/);
+
+// Approved refinements: Linha 17-Ouro, desktop-only hero, explicit system filter,
+// clickable document rows/details, and ADMIN add-user UI scaffold for PR #4.
+assert.match(ux,/Linha 17-Ouro/);
+assert.match(ux,/L-17 OURO/);
+assert.match(ux,/enhanceSystemFilter/);
+assert.match(ux,/data-ux-clickable/);
+assert.match(ux,/openDocumentDetails/);
+assert.match(ux,/Adicionar usuário/);
+assert.match(ux,/option value="USER"/);
+assert.match(ux,/option value="ADMIN"/);
+assert.match(ux,/PR #4/);
+assert.match(uxStyles,/@media \(min-width:1200px\)/);
+assert.match(uxStyles,/@media \(max-width:1199px\)/);
+assert.match(uxStyles,/\.hero-rail\{display:none!important\}/);
+assert.match(uxStyles,/brand-project-line/);
+assert.match(uxStyles,/doc-table tbody tr\[data-ux-clickable\]/);
+assert.match(index,/ux-adjustments\.css/);
+assert.match(index,/ux-adjustments\.js/);
 
 // Approved visual identity and device-specific responsive layouts.
 assert.match(styles,/--blue-950:#03264f/);
