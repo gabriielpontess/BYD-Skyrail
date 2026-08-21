@@ -16,10 +16,11 @@ const paths=[
   '../sw.js',
   '../supabase/migrations/20260821154420_initial_byd_skyrail_schema.sql',
   '../supabase/migrations/20260821173500_add_governance_and_document_history.sql',
-  '../supabase/migrations/20260821174500_move_admin_helper_to_private_schema.sql'
+  '../supabase/migrations/20260821174500_move_admin_helper_to_private_schema.sql',
+  '../supabase/migrations/20260821175500_optimize_governance_policies.sql'
 ];
 const files=await Promise.all(paths.map(p=>readFile(new URL(p,import.meta.url),'utf8')));
-const [api,db,sync,sw,initialMigration,governanceMigration,privateAuthMigration]=files;
+const [api,db,sync,sw,initialMigration,governanceMigration,privateAuthMigration,performanceMigration]=files;
 const source=files.join('\n').toLowerCase();
 assert.doesNotMatch(source,/docinspector_|sky17_|service_role|servicerole|secretkey/);
 assert.match(api,/findByCode/);
@@ -44,4 +45,8 @@ assert.match(privateAuthMigration,/create schema if not exists private/i);
 assert.match(privateAuthMigration,/create or replace function private\.is_active_admin/i);
 assert.match(privateAuthMigration,/drop function if exists public\.is_active_admin/i);
 assert.match(privateAuthMigration,/document_history_read_admin/i);
+assert.match(performanceMigration,/documents_created_by_idx/i);
+assert.match(performanceMigration,/documents_updated_by_idx/i);
+assert.match(performanceMigration,/document_history_recorded_by_idx/i);
+assert.match(performanceMigration,/members_read_self_or_admin/i);
 console.log('BYD Skyrail standalone: isolamento, sync, governança e histórico validados.');
