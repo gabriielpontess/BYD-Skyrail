@@ -1,0 +1,9 @@
+{
+  "name": "BYD Skyrail",
+  "short_name": "Skyrail",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#111827",
+  "description": "Biblioteca oficial de documentos técnicos para consulta online e offline."
+}

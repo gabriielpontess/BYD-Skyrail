@@ -12,9 +12,12 @@ Aplicação independente para consulta de documentação técnica em campo, com 
 
 ## Backend
 1. Criar projeto Supabase exclusivo.
-2. Aplicar `supabase/migrations/0001_initial.sql`.
+2. Aplicar `supabase/migrations/20260821154420_initial_byd_skyrail_schema.sql`.
 3. Criar o primeiro usuário em Auth.
 4. Inserir esse `auth.users.id` em `public.members` com `role='ADMIN'`.
-5. Copiar `config.example.js` para `config.js` e preencher URL + publishable key.
+5. Preencher `config.js` com URL + publishable key do projeto.
 
-Nunca coloque service_role/secret key no frontend.
+O projeto Supabase standalone foi criado em `sa-east-1`, o schema inicial já foi aplicado e o primeiro ADMIN está provisionado. Nunca coloque `service_role`/secret key no frontend.
+
+## Deploy
+O projeto Netlify `byd-skyrail` está vinculado ao repositório `gabriielpontess/BYD-Skyrail`, com `main` como branch de produção. Mudanças do PR standalone devem ser validadas em Deploy Preview antes do merge e do smoke test final no tablet.
