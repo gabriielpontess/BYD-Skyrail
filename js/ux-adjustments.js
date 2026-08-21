@@ -91,10 +91,14 @@ function enhanceDocumentTable() {
     row.setAttribute('aria-label', `Ver informações do documento ${$('.doc-code', row)?.innerText.trim() || ''}`);
     const show = event => {
       if (event?.target?.closest('.table-actions button')) return;
+      if (event?.type === 'click') {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       const data = documentDataFromRow(row);
       if (data) openDocumentDetails(data, action);
     };
-    row.addEventListener('click', show);
+    row.addEventListener('click', show, true);
     row.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
