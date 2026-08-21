@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "@supabase/supabase-js";
 
+const APP_URL = "https://byd-skyrail.netlify.app";
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -59,7 +60,8 @@ Deno.serve(async (req: Request) => {
   if (!['ADMIN', 'USER'].includes(role)) return json(400, { error: "Perfil inválido." });
 
   const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
-    data: { display_name: displayName }
+    data: { display_name: displayName },
+    redirectTo: APP_URL
   });
 
   if (inviteError || !inviteData?.user) {
