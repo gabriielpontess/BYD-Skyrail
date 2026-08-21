@@ -42,7 +42,7 @@ assert.match(api,/changeOwnPassword/);
 assert.doesNotMatch(api,/remove\(old/);
 assert.match(db,/const META='documents';const FILES='files'/);
 assert.match(sync,/f\.blob\.slice\(0,5\)\.arrayBuffer/);
-assert.match(sw,/const VERSION='1\.1\.2'/);
+assert.match(sw,/const VERSION='1\.1\.3'/);
 assert.match(sw,/assets\/l17-ouro-hero\.svg/);
 assert.match(sw,/byd-skyrail-/);
 
@@ -59,7 +59,6 @@ assert.match(app,/data-admin-tab="documents"/);
 assert.match(app,/data-admin-tab="users"/);
 assert.match(app,/data-admin-tab="history"/);
 
-// The hero is now one versioned SVG asset; JS no longer paints or mutates it.
 assert.match(heroAsset,/Linha 17-Ouro/);
 assert.match(heroAsset,/L-17 Ouro/);
 assert.match(uxCss,/background:url\('\.\/assets\/l17-ouro-hero\.svg'\)/);
