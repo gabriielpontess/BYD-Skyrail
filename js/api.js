@@ -52,6 +52,23 @@ export async function changeOwnPassword(password) {
   if (error) throw new Error('Não foi possível alterar a senha.');
 }
 
+export async function createUserInvite(input) {
+  const display_name = v(input?.display_name);
+  const email = v(input?.email).toLowerCase();
+  const role = v(input?.role || 'USER').toUpperCase();
+  const active = input?.active === true;
+  if (!display_name) throw new Error('Nome obrigatório.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('E-mail inválido.');
+  if (!['ADMIN', 'USER'].includes(role)) throw new Error('Perfil de usuário inválido.');
+
+  const { data, error } = await getClient().functions.invoke('create-user', {
+    body: { display_name, email, role, active }
+  });
+  if (data?.error) throw new Error(data.error);
+  if (error || !data?.user) throw new Error('Não foi possível criar o usuário.');
+  return data.user;
+}
+
 export async function listActive() {
   const { data, error } = await getClient()
     .from('documents')
