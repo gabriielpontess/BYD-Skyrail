@@ -1,3 +1,5 @@
+import { createUserInvite } from './api.js';
+
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 let scheduled = false;
@@ -132,10 +134,8 @@ function enhanceSystemFilter() {
   const panel = $('.search-panel');
   const row = $('.filter-row', panel || document);
   if (!panel || !row || $('.ux-system-filter', panel)) return;
-
   const filterButtons = $$('[data-filter]', row);
   if (!filterButtons.length) return;
-
   const selected = filterButtons.find(button => button.classList.contains('active'))?.dataset.filter || 'ALL';
   const wrapper = document.createElement('label');
   wrapper.className = 'ux-system-filter';
@@ -149,30 +149,53 @@ function isAdministratorScreen() {
   return /administrador/i.test($('#header-user-role')?.textContent || '') || /administrador/i.test($('.access-role strong')?.textContent || '');
 }
 
-function openAddUserPreview() {
+function openAddUserDialog() {
   document.querySelector('.ux-add-user-backdrop')?.remove();
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop ux-add-user-backdrop';
   backdrop.innerHTML = `<section class="modal" style="width:min(680px,100%)" role="dialog" aria-modal="true" aria-label="Adicionar usuário">
-    <header class="modal-head"><div class="modal-head-copy"><strong>Adicionar usuário</strong><small>Cadastro de acesso ao BYD Skyrail</small></div><button class="btn btn-outline" data-ux-close type="button">Fechar</button></header>
+    <header class="modal-head"><div class="modal-head-copy"><strong>Adicionar usuário</strong><small>Convite seguro para acesso ao BYD Skyrail</small></div><button class="btn btn-outline" data-ux-close type="button">Fechar</button></header>
     <div class="modal-body">
       <form class="admin-form" data-ux-user-form>
         <label class="field wide"><span>Nome completo</span><input name="name" required placeholder="Nome do colaborador"></label>
         <label class="field wide"><span>E-mail</span><input name="email" type="email" required placeholder="usuario@empresa.com"></label>
         <label class="field"><span>Perfil</span><select name="role"><option value="USER">USER</option><option value="ADMIN">ADMIN</option></select></label>
         <label class="field"><span>Acesso inicial</span><select name="active"><option value="false">Inativo</option><option value="true">Ativo</option></select></label>
-        <div class="wide ux-add-user-note">A interface está preparada no PR #3. A criação segura no Supabase Auth está sendo implementada no PR #4.</div>
-        <div class="wide" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">Adicionar usuário</button></div>
+        <div class="wide ux-add-user-note">O usuário receberá um convite por e-mail. A senha será definida pelo próprio usuário.</div>
+        <div class="wide" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">Enviar convite</button></div>
       </form>
     </div>
   </section>`;
 
   const close = () => backdrop.remove();
   $('[data-ux-close]', backdrop).onclick = close;
-  $('[data-ux-user-form]', backdrop).onsubmit = event => {
+  $('[data-ux-user-form]', backdrop).onsubmit = async event => {
     event.preventDefault();
+    const form = event.currentTarget;
+    const button = form.querySelector('button[type="submit"]');
     const note = $('.ux-add-user-note', backdrop);
-    note.textContent = 'Fluxo funcional em implementação no PR #4. Nenhum usuário foi criado por esta prévia de UX.';
+    const data = new FormData(form);
+    button.disabled = true;
+    note.textContent = 'Criando acesso e enviando convite…';
+    try {
+      await createUserInvite({
+        display_name: data.get('name'),
+        email: data.get('email'),
+        role: data.get('role'),
+        active: data.get('active') === 'true'
+      });
+      note.textContent = 'Convite enviado e perfil criado com sucesso.';
+      note.style.background = 'var(--green-100)';
+      note.style.color = 'var(--green-700)';
+      form.reset();
+      setTimeout(close, 1200);
+    } catch (error) {
+      note.textContent = error.message || 'Não foi possível criar o usuário.';
+      note.style.background = 'var(--red-100)';
+      note.style.color = 'var(--red-700)';
+    } finally {
+      button.disabled = false;
+    }
   };
   backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
   document.body.append(backdrop);
@@ -182,11 +205,10 @@ function enhanceAdminProfile() {
   if (!isAdministratorScreen()) return;
   const profileMain = $('.profile-main');
   if (!profileMain || $('.ux-admin-users-entry', profileMain)) return;
-
   const section = document.createElement('section');
   section.className = 'profile-section ux-admin-users-entry';
-  section.innerHTML = `<div class="profile-section-head"><div><h2>Usuários e perfis</h2><p>Prepare novos acessos e escolha entre os perfis ADMIN ou USER.</p></div><button class="btn btn-primary" data-ux-add-user type="button">Adicionar usuário</button></div>`;
-  $('[data-ux-add-user]', section).onclick = openAddUserPreview;
+  section.innerHTML = `<div class="profile-section-head"><div><h2>Usuários e perfis</h2><p>Crie novos acessos e escolha entre os perfis ADMIN ou USER.</p></div><button class="btn btn-primary" data-ux-add-user type="button">Adicionar usuário</button></div>`;
+  $('[data-ux-add-user]', section).onclick = openAddUserDialog;
   profileMain.append(section);
 }
 
@@ -195,14 +217,13 @@ function enhanceAdminUsersTab() {
   if (!list) return;
   const panel = list.closest('.panel-card');
   if (!panel || $('.ux-users-toolbar', panel)) return;
-
   const heading = $('h3', panel);
   const toolbar = document.createElement('div');
   toolbar.className = 'ux-users-toolbar';
   toolbar.innerHTML = `<h3>${escapeHtml(heading?.textContent || 'Gestão de usuários')}</h3><button class="btn btn-primary" data-ux-add-user type="button">Adicionar usuário</button>`;
   heading?.remove();
   panel.prepend(toolbar);
-  $('[data-ux-add-user]', toolbar).onclick = openAddUserPreview;
+  $('[data-ux-add-user]', toolbar).onclick = openAddUserDialog;
 }
 
 function enhanceAll() {

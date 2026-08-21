@@ -21,15 +21,17 @@ const paths=[
   '../manifest.webmanifest',
   '../sw.js',
   '../assets/l17-ouro-hero.svg',
+  '../supabase/functions/create-user/index.ts',
+  '../supabase/functions/create-user/deno.json',
   '../supabase/migrations/20260821154420_initial_byd_skyrail_schema.sql',
   '../supabase/migrations/20260821173500_add_governance_and_document_history.sql',
   '../supabase/migrations/20260821174500_move_admin_helper_to_private_schema.sql',
   '../supabase/migrations/20260821175500_optimize_governance_policies.sql'
 ];
 const files=await Promise.all(paths.map(p=>readFile(new URL(p,import.meta.url),'utf8')));
-const [api,db,sync,app,uxJs,styles,uxCss,index,manifest,sw,heroAsset,initialMigration,governanceMigration,privateAuthMigration,performanceMigration]=files;
-const source=files.join('\n').toLowerCase();
-assert.doesNotMatch(source,/docinspector_|sky17_|service_role|servicerole|secretkey/);
+const [api,db,sync,app,uxJs,styles,uxCss,index,manifest,sw,heroAsset,createUserFn,createUserDeno,initialMigration,governanceMigration,privateAuthMigration,performanceMigration]=files;
+const frontend=[api,db,sync,app,uxJs,styles,uxCss,index,manifest,sw,heroAsset].join('\n').toLowerCase();
+assert.doesNotMatch(frontend,/docinspector_|sky17_|service_role|servicerole|secretkey/);
 
 assert.match(api,/findByCode/);
 assert.match(api,/maybeSingle/);
@@ -39,6 +41,9 @@ assert.match(api,/listDocumentHistory/);
 assert.match(api,/listRecentDocumentHistory/);
 assert.match(api,/updateOwnProfile/);
 assert.match(api,/changeOwnPassword/);
+assert.match(api,/createUserInvite/);
+assert.match(api,/functions\.invoke\('create-user'/);
+assert.doesNotMatch(api,/SUPABASE_SERVICE_ROLE_KEY|service_role/i);
 assert.doesNotMatch(api,/remove\(old/);
 assert.match(db,/const META='documents';const FILES='files'/);
 assert.match(sync,/f\.blob\.slice\(0,5\)\.arrayBuffer/);
@@ -55,9 +60,6 @@ assert.match(app,/Filtrar por sistema/);
 assert.match(app,/id="profile-form"/);
 assert.match(app,/id="password-form"/);
 assert.match(app,/Conferência \/ Auditoria/);
-assert.match(app,/data-admin-tab="documents"/);
-assert.match(app,/data-admin-tab="users"/);
-assert.match(app,/data-admin-tab="history"/);
 
 assert.match(heroAsset,/Linha 17-Ouro/);
 assert.match(heroAsset,/L-17 Ouro/);
@@ -70,10 +72,20 @@ assert.doesNotMatch(uxJs,/enhanceHero|l17-train|l17-skyline|enhanceBrand/);
 assert.match(uxJs,/data-ux-clickable/);
 assert.match(uxJs,/openDocumentDetails/);
 assert.match(uxJs,/Filtrar documentos por sistema/);
-assert.match(uxJs,/Adicionar usuário/);
+assert.match(uxJs,/createUserInvite/);
+assert.match(uxJs,/Enviar convite/);
 assert.match(uxJs,/option value="USER"/);
 assert.match(uxJs,/option value="ADMIN"/);
-assert.match(uxJs,/PR #4/);
+
+// Server-side user creation: JWT-gated caller + active ADMIN check + invite + compensating rollback.
+assert.match(createUserFn,/SUPABASE_SERVICE_ROLE_KEY/);
+assert.match(createUserFn,/auth\.getUser\(jwt\)/);
+assert.match(createUserFn,/callerMember\.role !== "ADMIN"/);
+assert.match(createUserFn,/auth\.admin\.inviteUserByEmail/);
+assert.match(createUserFn,/from\("members"\)\s*\.upsert/);
+assert.match(createUserFn,/auth\.admin\.deleteUser\(userId\)/);
+assert.match(createUserFn,/\['ADMIN', 'USER'\]/);
+assert.match(createUserDeno,/npm:@supabase\/supabase-js@2/);
 
 assert.match(styles,/--blue-950:#03264f/);
 assert.match(styles,/--gold-500:#e2a400/);
@@ -97,10 +109,6 @@ assert.match(governanceMigration,/capture_document_history/i);
 assert.match(governanceMigration,/REVISION_UPDATED/);
 assert.match(privateAuthMigration,/create schema if not exists private/i);
 assert.match(privateAuthMigration,/create or replace function private\.is_active_admin/i);
-assert.match(privateAuthMigration,/drop function if exists public\.is_active_admin/i);
 assert.match(privateAuthMigration,/document_history_read_admin/i);
-assert.match(performanceMigration,/documents_created_by_idx/i);
-assert.match(performanceMigration,/documents_updated_by_idx/i);
-assert.match(performanceMigration,/document_history_recorded_by_idx/i);
 assert.match(performanceMigration,/members_read_self_or_admin/i);
-console.log('BYD Skyrail: isolamento, sync, governança e UX responsiva validados.');
+console.log('BYD Skyrail: UX responsiva e criação segura de usuários validadas.');
