@@ -6,12 +6,15 @@ const CACHE_KEY = 'byd-skyrail:systems-cache';
 let scheduled = false;
 let enhancing = false;
 let rerunRequested = false;
+let homeBooting = false;
+let homeBootPending = false;
 let systems = [];
 let docs = [];
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const esc = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function route() {
   const raw = location.hash.replace(/^#\/?/, '');
@@ -23,7 +26,7 @@ function cachedSystems() {
   try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '[]'); } catch { return []; }
 }
 
-async function waitForView(selector, timeoutMs = 8000) {
+async function waitForView(selector, timeoutMs = 10000) {
   if ($(selector)) return true;
   return new Promise(resolve => {
     let settled = false;
@@ -52,19 +55,32 @@ async function authenticatedSession() {
   }
 }
 
-async function refreshData() {
+async function waitForAuthenticatedSession(timeoutMs = 12000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const session = await authenticatedSession();
+    if (session?.user) return session;
+    await sleep(120);
+  }
+  return null;
+}
+
+async function refreshData({ requireSession = false } = {}) {
   try { docs = await listLocal(); } catch { docs = []; }
   systems = cachedSystems();
-  if (!navigator.onLine) return;
+  if (!navigator.onLine) return true;
 
-  const session = await authenticatedSession();
-  if (!session?.user) return;
+  const session = requireSession ? await waitForAuthenticatedSession() : await authenticatedSession();
+  if (!session?.user) return false;
 
   try {
     const fresh = await listSystems();
     systems = fresh;
     localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
-  } catch {}
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function selectedSystemId() {
@@ -77,9 +93,9 @@ function goToDocuments(systemId = 'ALL') {
 }
 
 function renderHomeSystems() {
-  if (route().name !== 'home') return;
+  if (route().name !== 'home') return false;
   const hero = $('.hero');
-  if (!hero) return;
+  if (!hero) return false;
 
   const active = systems.filter(system => system.active !== false);
   let section = $('.systems-home-section');
@@ -98,6 +114,28 @@ function renderHomeSystems() {
 
   $('[data-all-systems]', section)?.addEventListener('click', () => goToDocuments());
   $$('[data-system-id]', section).forEach(button => button.addEventListener('click', () => goToDocuments(button.dataset.systemId)));
+  return true;
+}
+
+async function ensureHomeSystems() {
+  if (route().name !== 'home') return;
+  if (homeBooting) {
+    homeBootPending = true;
+    return;
+  }
+
+  homeBooting = true;
+  try {
+    if (!await waitForView('.hero')) return;
+    await refreshData({ requireSession: true });
+    if (route().name === 'home') renderHomeSystems();
+  } finally {
+    homeBooting = false;
+    if (homeBootPending) {
+      homeBootPending = false;
+      queueMicrotask(ensureHomeSystems);
+    }
+  }
 }
 
 function renameDisciplineFilter() {
@@ -196,18 +234,16 @@ function applyDocumentSystemPresentation() {
   }
 }
 
-async function enhance() {
-  const current = route().name;
-  const selector = current === 'home' ? '.hero' : current === 'documents' ? '.search-panel' : null;
-  if (selector && !await waitForView(selector)) return;
-
+async function enhanceDocuments() {
+  if (route().name !== 'documents') return;
+  if (!await waitForView('.search-panel')) return;
   await refreshData();
-  renderHomeSystems();
   renderSystemFilter();
   applyDocumentSystemPresentation();
 }
 
 function schedule() {
+  if (route().name !== 'documents') return;
   if (enhancing) {
     rerunRequested = true;
     return;
@@ -218,7 +254,7 @@ function schedule() {
     scheduled = false;
     enhancing = true;
     try {
-      await enhance();
+      await enhanceDocuments();
     } finally {
       enhancing = false;
       if (rerunRequested) {
@@ -229,15 +265,30 @@ function schedule() {
   });
 }
 
-new MutationObserver(schedule).observe(document.querySelector('#app'), { childList: true, subtree: true });
-addEventListener('hashchange', schedule);
-addEventListener('online', schedule);
-addEventListener('load', schedule);
+new MutationObserver(() => {
+  if (route().name === 'documents') schedule();
+}).observe(document.querySelector('#app'), { childList: true, subtree: true });
+
+addEventListener('hashchange', () => {
+  if (route().name === 'home') ensureHomeSystems();
+  else if (route().name === 'documents') schedule();
+});
+addEventListener('online', () => {
+  if (route().name === 'home') ensureHomeSystems();
+  else if (route().name === 'documents') schedule();
+});
+addEventListener('load', () => {
+  if (route().name === 'home') ensureHomeSystems();
+  else if (route().name === 'documents') schedule();
+});
 
 try {
   getClient().auth.onAuthStateChange((_event, session) => {
-    if (session?.user || !session) schedule();
+    if (!session?.user) return;
+    if (route().name === 'home') ensureHomeSystems();
+    else if (route().name === 'documents') schedule();
   });
 } catch {}
 
-schedule();
+if (route().name === 'home') ensureHomeSystems();
+else if (route().name === 'documents') schedule();
