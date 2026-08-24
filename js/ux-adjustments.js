@@ -128,23 +128,6 @@ function enhanceDocumentRows() {
   });
 }
 
-function enhanceSystemFilter() {
-  const panel = $('.search-panel');
-  const row = $('.filter-row', panel || document);
-  if (!panel || !row || $('.ux-system-filter', panel)) return;
-
-  const filterButtons = $$('[data-filter]', row);
-  if (!filterButtons.length) return;
-
-  const selected = filterButtons.find(button => button.classList.contains('active'))?.dataset.filter || 'ALL';
-  const wrapper = document.createElement('label');
-  wrapper.className = 'ux-system-filter';
-  wrapper.innerHTML = `<span>Sistema</span><select aria-label="Filtrar documentos por sistema">${filterButtons.map(button => `<option value="${escapeHtml(button.dataset.filter)}" ${button.dataset.filter === selected ? 'selected' : ''}>${escapeHtml(button.dataset.filter === 'ALL' ? 'Todos os sistemas' : button.textContent.trim())}</option>`).join('')}</select>`;
-  const select = $('select', wrapper);
-  select.onchange = () => filterButtons.find(button => button.dataset.filter === select.value)?.click();
-  row.before(wrapper);
-}
-
 function isAdministratorScreen() {
   return /administrador/i.test($('#header-user-role')?.textContent || '') || /administrador/i.test($('.access-role strong')?.textContent || '');
 }
@@ -206,7 +189,6 @@ function enhanceAdminUsersTab() {
 }
 
 function enhanceAll() {
-  enhanceSystemFilter();
   enhanceDocumentRows();
   enhanceAdminProfile();
   enhanceAdminUsersTab();
