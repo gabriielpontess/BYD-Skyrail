@@ -65,7 +65,11 @@ function renameDisciplineFilter() {
   const row = $('.filter-row');
   if (!row) return;
   const label = $('.filter-label', row);
-  if (label) label.textContent = 'Filtrar por disciplina:';
+  if (label && label.textContent !== 'Filtrar por disciplina:') label.textContent = 'Filtrar por disciplina:';
+}
+
+function systemOptionsHtml(selected) {
+  return `<option value="ALL">Todos os sistemas</option>${systems.filter(s => s.active !== false).map(system => `<option value="${esc(system.id)}" ${system.id === selected ? 'selected' : ''}>${esc(system.name)}</option>`).join('')}`;
 }
 
 function renderSystemFilter() {
@@ -73,14 +77,32 @@ function renderSystemFilter() {
   const panel = $('.search-panel');
   if (!panel) return;
 
-  document.querySelector('.ux-system-filter')?.remove();
+  // Remove the legacy UX helper only once; canonical systems owns this control.
+  $$('.ux-system-filter', panel).forEach(node => node.remove());
+
   const selected = selectedSystemId();
-  const wrapper = document.createElement('label');
-  wrapper.className = 'canonical-system-filter';
-  wrapper.innerHTML = `<span>Sistema</span><select aria-label="Filtrar documentos por sistema"><option value="ALL">Todos os sistemas</option>${systems.filter(s => s.active !== false).map(system => `<option value="${esc(system.id)}" ${system.id === selected ? 'selected' : ''}>${esc(system.name)}</option>`).join('')}</select>`;
-  wrapper.querySelector('select').addEventListener('change', event => goToDocuments(event.target.value));
-  const hint = $('.search-hint', panel);
-  if (hint) hint.after(wrapper); else panel.prepend(wrapper);
+  const activeSignature = systems
+    .filter(system => system.active !== false)
+    .map(system => `${system.id}:${system.name}`)
+    .join('|');
+
+  let wrapper = $('.canonical-system-filter', panel);
+  if (!wrapper) {
+    wrapper = document.createElement('label');
+    wrapper.className = 'canonical-system-filter';
+    wrapper.dataset.systemFilter = 'canonical';
+    wrapper.innerHTML = `<span>Sistema</span><select aria-label="Filtrar documentos por sistema"></select>`;
+    const hint = $('.search-hint', panel);
+    if (hint) hint.after(wrapper); else panel.prepend(wrapper);
+    wrapper.querySelector('select').addEventListener('change', event => goToDocuments(event.target.value));
+  }
+
+  const select = $('select', wrapper);
+  if (wrapper.dataset.optionsSignature !== activeSignature) {
+    select.innerHTML = systemOptionsHtml(selected);
+    wrapper.dataset.optionsSignature = activeSignature;
+  }
+  if (select.value !== selected) select.value = selected;
   renameDisciplineFilter();
 }
 
@@ -95,13 +117,15 @@ function applyDocumentSystemPresentation() {
   let visibleCount = 0;
 
   $$('.doc-table tbody tr').forEach(row => {
-    const code = $('.doc-code', row)?.textContent.replace(/^\s*/, '').trim() || '';
+    const code = $('.doc-code', row)?.textContent.trim() || '';
     const doc = byCode.get(code);
     if (!doc) return;
     const cell = row.cells?.[2];
-    if (cell) cell.innerHTML = `<span class="system-tag">${esc(systemName(doc.system_id))}</span>`;
+    const name = systemName(doc.system_id);
+    const tag = cell ? $('.system-tag', cell) : null;
+    if (cell && (!tag || tag.textContent.trim() !== name)) cell.innerHTML = `<span class="system-tag">${esc(name)}</span>`;
     const show = selected === 'ALL' || doc.system_id === selected;
-    row.hidden = !show;
+    if (row.hidden === show) row.hidden = !show;
     if (show) visibleCount++;
   });
 
@@ -110,15 +134,22 @@ function applyDocumentSystemPresentation() {
     const doc = byCode.get(code);
     if (!doc) return;
     const tag = $('.system-tag', card);
-    if (tag) tag.textContent = systemName(doc.system_id);
-    card.hidden = !(selected === 'ALL' || doc.system_id === selected);
+    const name = systemName(doc.system_id);
+    if (tag && tag.textContent.trim() !== name) tag.textContent = name;
+    const show = selected === 'ALL' || doc.system_id === selected;
+    if (card.hidden === show) card.hidden = !show;
   });
 
   const count = $('.results-bar strong');
-  if (count && selected !== 'ALL') count.textContent = `${visibleCount.toLocaleString('pt-BR')} documento(s) encontrado(s)`;
-  const empty = $('.systems-filter-empty');
-  if (empty) empty.remove();
-  if (selected !== 'ALL' && visibleCount === 0 && $('.doc-table-wrap')) {
+  if (count && selected !== 'ALL') {
+    const label = `${visibleCount.toLocaleString('pt-BR')} documento(s) encontrado(s)`;
+    if (count.textContent !== label) count.textContent = label;
+  }
+
+  const existingEmpty = $('.systems-filter-empty');
+  const needsEmpty = selected !== 'ALL' && visibleCount === 0 && !!$('.doc-table-wrap');
+  if (existingEmpty && !needsEmpty) existingEmpty.remove();
+  if (!existingEmpty && needsEmpty) {
     const message = document.createElement('div');
     message.className = 'systems-filter-empty';
     message.textContent = 'Nenhum documento deste sistema corresponde aos demais filtros.';
