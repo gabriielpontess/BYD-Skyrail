@@ -18,8 +18,8 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function route() {
   const raw = location.hash.replace(/^#\/?/, '');
-  const [name = 'home', query = ''] = raw.split('?');
-  return { name, params: new URLSearchParams(query) };
+  const [rawName = '', query = ''] = raw.split('?');
+  return { name: rawName || 'home', params: new URLSearchParams(query) };
 }
 
 function cachedSystems() {
@@ -68,18 +68,19 @@ async function waitForAuthenticatedSession(timeoutMs = 12000) {
 async function refreshData({ requireSession = false } = {}) {
   try { docs = await listLocal(); } catch { docs = []; }
   systems = cachedSystems();
-  if (!navigator.onLine) return true;
+  if (!navigator.onLine) return { ok: true, source: 'cache' };
 
   const session = requireSession ? await waitForAuthenticatedSession() : await authenticatedSession();
-  if (!session?.user) return false;
+  if (!session?.user) return { ok: false, reason: 'session' };
 
   try {
     const fresh = await listSystems();
     systems = fresh;
     localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
-    return true;
-  } catch {
-    return false;
+    return { ok: true, source: 'network' };
+  } catch (error) {
+    console.error('[BYD Skyrail] Falha ao carregar sistemas:', error);
+    return { ok: false, reason: 'query', error };
   }
 }
 
@@ -92,12 +93,10 @@ function goToDocuments(systemId = 'ALL') {
   location.hash = systemId === 'ALL' ? '#/documents' : `#/documents?system=${encodeURIComponent(systemId)}`;
 }
 
-function renderHomeSystems() {
-  if (route().name !== 'home') return false;
+function ensureSystemsSection() {
+  if (route().name !== 'home') return null;
   const hero = $('.hero');
-  if (!hero) return false;
-
-  const active = systems.filter(system => system.active !== false);
+  if (!hero) return null;
   let section = $('.systems-home-section');
   if (!section) {
     section = document.createElement('section');
@@ -105,7 +104,25 @@ function renderHomeSystems() {
     const next = hero.nextElementSibling;
     if (next) hero.parentNode.insertBefore(section, next); else hero.after(section);
   }
+  return section;
+}
 
+function renderHomeSystems({ status = 'ready' } = {}) {
+  const section = ensureSystemsSection();
+  if (!section) return false;
+
+  if (status === 'loading') {
+    section.innerHTML = `<div class="systems-section-head"><div><span class="systems-kicker">Documentação por sistema</span><h2>Sistemas</h2><p>Carregando sistemas…</p></div></div><div class="systems-empty"><span>Carregando sistemas disponíveis…</span></div>`;
+    return true;
+  }
+
+  if (status === 'error') {
+    section.innerHTML = `<div class="systems-section-head"><div><span class="systems-kicker">Documentação por sistema</span><h2>Sistemas</h2><p>Não foi possível carregar os sistemas.</p></div><button type="button" class="btn btn-outline" data-retry-systems>Tentar novamente</button></div><div class="systems-empty"><span>Verifique a conexão e tente novamente.</span></div>`;
+    $('[data-retry-systems]', section)?.addEventListener('click', ensureHomeSystems);
+    return true;
+  }
+
+  const active = systems.filter(system => system.active !== false);
   section.innerHTML = `<div class="systems-section-head"><div><span class="systems-kicker">Documentação por sistema</span><h2>Sistemas</h2><p>Selecione um sistema para consultar somente os documentos relacionados.</p></div><button type="button" class="btn btn-outline" data-all-systems>Ver todos os documentos</button></div>
     <div class="systems-card-grid">${active.length ? active.map(system => {
       const count = docs.filter(doc => doc.system_id === system.id).length;
@@ -127,8 +144,10 @@ async function ensureHomeSystems() {
   homeBooting = true;
   try {
     if (!await waitForView('.hero')) return;
-    await refreshData({ requireSession: true });
-    if (route().name === 'home') renderHomeSystems();
+    renderHomeSystems({ status: 'loading' });
+    const result = await refreshData({ requireSession: true });
+    if (route().name !== 'home') return;
+    renderHomeSystems({ status: result.ok ? 'ready' : 'error' });
   } finally {
     homeBooting = false;
     if (homeBootPending) {
