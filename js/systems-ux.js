@@ -3,6 +3,8 @@ import { listLocal } from './db.js';
 
 const CACHE_KEY = 'byd-skyrail:systems-cache';
 let scheduled = false;
+let enhancing = false;
+let rerunRequested = false;
 let systems = [];
 let docs = [];
 
@@ -18,6 +20,25 @@ function route() {
 
 function cachedSystems() {
   try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '[]'); } catch { return []; }
+}
+
+async function waitForView(selector, timeoutMs = 8000) {
+  if ($(selector)) return true;
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      observer.disconnect();
+      resolve(value);
+    };
+    const observer = new MutationObserver(() => {
+      if ($(selector)) finish(true);
+    });
+    observer.observe(document.querySelector('#app'), { childList: true, subtree: true });
+    const timer = setTimeout(() => finish(false), timeoutMs);
+  });
 }
 
 async function refreshData() {
@@ -77,16 +98,11 @@ function renderSystemFilter() {
   const panel = $('.search-panel');
   if (!panel) return;
 
-  // The generic UX layer still owns a legacy discipline-derived select.
-  // Keep one legacy node present but inert/hidden so that its MutationObserver
-  // does not recreate it. Canonical systems is the only visible system filter.
   $$('.ux-system-filter', panel).forEach(node => {
     if (!node.hidden) node.hidden = true;
     if (node.getAttribute('aria-hidden') !== 'true') node.setAttribute('aria-hidden', 'true');
   });
 
-  // Defensive cleanup for DOMs that may already contain duplicated canonical
-  // controls from an older cached script. Preserve exactly one instance.
   const canonicalNodes = $$('.canonical-system-filter', panel);
   let wrapper = canonicalNodes.shift() || null;
   canonicalNodes.forEach(node => node.remove());
@@ -168,6 +184,12 @@ function applyDocumentSystemPresentation() {
 }
 
 async function enhance() {
+  const current = route().name;
+  const selector = current === 'home' ? '.hero' : current === 'documents' ? '.search-panel' : null;
+  if (selector && !await waitForView(selector)) return;
+
+  // Data is loaded only after the authenticated view exists. This prevents the
+  // first Home render from caching an unauthenticated/empty systems response.
   await refreshData();
   renderHomeSystems();
   renderSystemFilter();
@@ -175,11 +197,24 @@ async function enhance() {
 }
 
 function schedule() {
+  if (enhancing) {
+    rerunRequested = true;
+    return;
+  }
   if (scheduled) return;
   scheduled = true;
   requestAnimationFrame(async () => {
     scheduled = false;
-    await enhance();
+    enhancing = true;
+    try {
+      await enhance();
+    } finally {
+      enhancing = false;
+      if (rerunRequested) {
+        rerunRequested = false;
+        schedule();
+      }
+    }
   });
 }
 
