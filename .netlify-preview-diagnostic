@@ -1,0 +1,3 @@
+Netlify deploy-preview diagnostic for PR #7.
+Created to verify GitHub → Netlify preview event delivery.
+No application behavior is changed.
