@@ -13,17 +13,17 @@
   <link rel="stylesheet" href="./styles.css">
   <link rel="stylesheet" href="./ux-adjustments.css">
   <link rel="stylesheet" href="./systems.css">
+  <link rel="stylesheet" href="./local-documents.css">
 </head>
 <body>
   <div id="app"></div>
   <div id="toast" class="toast" aria-live="polite"></div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/dist/umd/supabase.js"></script>
-  <script src="./config.js"></script>
   <script type="module" src="./js/app.js"></script>
   <script type="module" src="./js/systems-ux.js"></script>
   <script type="module" src="./js/ux-adjustments.js"></script>
+  <script type="module" src="./js/local-documents-ux.js"></script>
   <script>
-    if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
   </script>
 </body>
 </html>
