@@ -6,6 +6,8 @@
   command = "npm run build"
   publish = "dist"
 
+# Keep pull-request previews explicit for iPhone/tablet validation.
+
 [[headers]]
   for = "/*"
   [headers.values]
