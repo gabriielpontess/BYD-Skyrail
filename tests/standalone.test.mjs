@@ -30,6 +30,17 @@ assert.match(app,/routeFromHash/);assert.match(app,/\['home', 'documents', 'prof
 
 assert.match(systemsUx,/byd-skyrail:systems-cache/);assert.match(systemsUx,/systems-home-section/);assert.match(systemsUx,/#\/documents\?system=/);assert.match(systemsUx,/Todos os sistemas/);assert.match(systemsUx,/Filtrar por disciplina/);assert.match(systemsUx,/doc\.system_id === selected/);assert.match(systemsUx,/canonicalNodes\.shift/);assert.match(systemsUx,/canonicalNodes\.forEach\(node => node\.remove\(\)\)/);assert.match(systemsUx,/waitForView/);assert.match(systemsUx,/enhancing/);assert.match(systemsUx,/rerunRequested/);assert.match(systemsUx,/await refreshData\(\)/);assert.match(systemsCss,/systems-card-grid/);assert.match(systemsCss,/canonical-system-filter/);
 
+// Initial URL without a hash must be treated exactly like #/home.
+assert.match(systemsUx,/const \[rawName = '', query = ''\] = raw\.split\('\?'\)/);
+assert.match(systemsUx,/name: rawName \|\| 'home'/);
+// Systems loading/query failures must be observable instead of silently rendering nothing.
+assert.match(systemsUx,/Carregando sistemas/);
+assert.match(systemsUx,/Não foi possível carregar os sistemas/);
+assert.match(systemsUx,/data-retry-systems/);
+assert.match(systemsUx,/console\.error\('\[BYD Skyrail\] Falha ao carregar sistemas:'/);
+assert.match(systemsUx,/renderHomeSystems\(\{ status: 'loading' \}\)/);
+assert.match(systemsUx,/result\.ok \? 'ready' : 'error'/);
+
 // Sistema has exactly one owner: systems-ux.js. Generic UX must not create or label a system filter.
 assert.doesNotMatch(uxJs,/enhanceSystemFilter/);
 assert.doesNotMatch(uxJs,/ux-system-filter/);
@@ -43,4 +54,4 @@ assert.match(styles,/--blue-950:#03264f/);assert.match(styles,/--gold-500:#e2a40
 
 assert.match(initialMigration,/create table public\.members/i);assert.match(initialMigration,/create table public\.documents/i);assert.match(governanceMigration,/create table if not exists public\.document_history/i);assert.match(privateAuthMigration,/create or replace function private\.is_active_admin/i);assert.match(performanceMigration,/members_read_self_or_admin/i);
 assert.match(systemsMigration,/create table if not exists public\.systems/i);assert.match(systemsMigration,/lower\(btrim\(name\)\)/i);assert.match(systemsMigration,/add column if not exists system_id uuid null/i);assert.match(systemsMigration,/on delete restrict/i);assert.match(systemsMigration,/systems_read_active_members/i);assert.match(systemsMigration,/systems_insert_admin/i);assert.match(systemsMigration,/systems_update_admin/i);
-console.log('BYD Skyrail: UX, sistemas canônicos e propagação Home → Documentos validados.');
+console.log('BYD Skyrail: UX, sistemas canônicos, rota inicial e propagação Home → Documentos validados.');
