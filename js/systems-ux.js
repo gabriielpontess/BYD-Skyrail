@@ -1,4 +1,5 @@
 import { listSystems } from './api.js';
+import { getClient } from './client.js';
 import { listLocal } from './db.js';
 
 const CACHE_KEY = 'byd-skyrail:systems-cache';
@@ -41,16 +42,29 @@ async function waitForView(selector, timeoutMs = 8000) {
   });
 }
 
+async function authenticatedSession() {
+  try {
+    const { data, error } = await getClient().auth.getSession();
+    if (error) return null;
+    return data?.session || null;
+  } catch {
+    return null;
+  }
+}
+
 async function refreshData() {
   try { docs = await listLocal(); } catch { docs = []; }
-  if (navigator.onLine) {
-    try {
-      systems = await listSystems();
-      localStorage.setItem(CACHE_KEY, JSON.stringify(systems));
-      return;
-    } catch {}
-  }
   systems = cachedSystems();
+  if (!navigator.onLine) return;
+
+  const session = await authenticatedSession();
+  if (!session?.user) return;
+
+  try {
+    const fresh = await listSystems();
+    systems = fresh;
+    localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+  } catch {}
 }
 
 function selectedSystemId() {
@@ -65,19 +79,23 @@ function goToDocuments(systemId = 'ALL') {
 function renderHomeSystems() {
   if (route().name !== 'home') return;
   const hero = $('.hero');
-  if (!hero || $('.systems-home-section')) return;
+  if (!hero) return;
 
   const active = systems.filter(system => system.active !== false);
-  const section = document.createElement('section');
-  section.className = 'systems-home-section';
+  let section = $('.systems-home-section');
+  if (!section) {
+    section = document.createElement('section');
+    section.className = 'systems-home-section';
+    const next = hero.nextElementSibling;
+    if (next) hero.parentNode.insertBefore(section, next); else hero.after(section);
+  }
+
   section.innerHTML = `<div class="systems-section-head"><div><span class="systems-kicker">Documentação por sistema</span><h2>Sistemas</h2><p>Selecione um sistema para consultar somente os documentos relacionados.</p></div><button type="button" class="btn btn-outline" data-all-systems>Ver todos os documentos</button></div>
     <div class="systems-card-grid">${active.length ? active.map(system => {
       const count = docs.filter(doc => doc.system_id === system.id).length;
       return `<button type="button" class="system-home-card" data-system-id="${esc(system.id)}"><span class="system-card-mark" aria-hidden="true">${esc(system.name.slice(0,2).toUpperCase())}</span><span class="system-card-copy"><strong>${esc(system.name)}</strong><small>${count.toLocaleString('pt-BR')} documento(s)</small></span><span class="system-card-action">Ver documentos →</span></button>`;
     }).join('') : `<div class="systems-empty"><strong>Nenhum sistema ativo cadastrado.</strong><span>Um ADMIN pode cadastrar sistemas antes de classificar os documentos.</span></div>`}</div>`;
 
-  const next = hero.nextElementSibling;
-  if (next) hero.parentNode.insertBefore(section, next); else hero.after(section);
   $('[data-all-systems]', section)?.addEventListener('click', () => goToDocuments());
   $$('[data-system-id]', section).forEach(button => button.addEventListener('click', () => goToDocuments(button.dataset.systemId)));
 }
@@ -97,11 +115,6 @@ function renderSystemFilter() {
   if (route().name !== 'documents') return;
   const panel = $('.search-panel');
   if (!panel) return;
-
-  $$('.ux-system-filter', panel).forEach(node => {
-    if (!node.hidden) node.hidden = true;
-    if (node.getAttribute('aria-hidden') !== 'true') node.setAttribute('aria-hidden', 'true');
-  });
 
   const canonicalNodes = $$('.canonical-system-filter', panel);
   let wrapper = canonicalNodes.shift() || null;
@@ -188,8 +201,6 @@ async function enhance() {
   const selector = current === 'home' ? '.hero' : current === 'documents' ? '.search-panel' : null;
   if (selector && !await waitForView(selector)) return;
 
-  // Data is loaded only after the authenticated view exists. This prevents the
-  // first Home render from caching an unauthenticated/empty systems response.
   await refreshData();
   renderHomeSystems();
   renderSystemFilter();
@@ -222,4 +233,11 @@ new MutationObserver(schedule).observe(document.querySelector('#app'), { childLi
 addEventListener('hashchange', schedule);
 addEventListener('online', schedule);
 addEventListener('load', schedule);
+
+try {
+  getClient().auth.onAuthStateChange((_event, session) => {
+    if (session?.user || !session) schedule();
+  });
+} catch {}
+
 schedule();
