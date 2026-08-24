@@ -1,2 +1,14 @@
-const VERSION='1.1.16';const CACHE=`byd-skyrail-${VERSION}`;const SHELL=['./','./index.html','./styles.css','./ux-adjustments.css','./systems.css','./manifest.webmanifest','./config.js','./js/client.js','./js/model.js','./js/db.js','./js/api.js','./js/sync.js','./js/app.js','./js/systems-ux.js','./js/ux-adjustments.js'];const SUPA='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/dist/umd/supabase.js';
-self.addEventListener('install',e=>e.waitUntil((async()=>{const c=await caches.open(CACHE);await c.addAll(SHELL);try{const r=await fetch(SUPA,{cache:'no-cache'});if(r.ok)await c.put(SUPA,r)}catch{}})()));self.addEventListener('activate',e=>e.waitUntil((async()=>{for(const k of await caches.keys())if(k!==CACHE)await caches.delete(k);await self.clients.claim()})()));self.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(e.request.mode==='navigate'){e.respondWith(fetch(e.request).catch(()=>caches.match('./index.html')));return}if(u.origin===location.origin||e.request.url===SUPA)e.respondWith((async()=>{const c=await caches.open(CACHE);const hit=await c.match(e.request);if(hit)return hit;try{const r=await fetch(e.request);if(r.ok)await c.put(e.request,r.clone());return r}catch{return Response.error()}})())});
+const VERSION='1.2.0';
+const CACHE=`byd-skyrail-${VERSION}`;
+self.addEventListener('install',event=>event.waitUntil(self.skipWaiting()));
+self.addEventListener('activate',event=>event.waitUntil((async()=>{for(const key of await caches.keys())if(key.startsWith('byd-skyrail-')&&key!==CACHE)await caches.delete(key);await self.clients.claim()})()));
+self.addEventListener('fetch',event=>{
+  if(event.request.method!=='GET')return;
+  const url=new URL(event.request.url);
+  if(url.origin!==location.origin)return;
+  if(event.request.mode==='navigate'){
+    event.respondWith((async()=>{const cache=await caches.open(CACHE);try{const response=await fetch(event.request);if(response.ok)await cache.put('./index.html',response.clone());return response}catch{return await cache.match('./index.html')||Response.error()}})());
+    return;
+  }
+  event.respondWith((async()=>{const cache=await caches.open(CACHE);const hit=await cache.match(event.request);if(hit)return hit;try{const response=await fetch(event.request);if(response.ok)await cache.put(event.request,response.clone());return response}catch{return Response.error()}})());
+});
