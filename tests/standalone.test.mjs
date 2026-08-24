@@ -24,11 +24,11 @@ assert.doesNotMatch(source,/docinspector_|sky17_|service_role|servicerole|secret
 
 assert.match(api,/findByCode/);assert.match(api,/maybeSingle/);assert.match(api,/listMembers/);assert.match(api,/updateMember/);assert.match(api,/listDocumentHistory/);assert.match(api,/listRecentDocumentHistory/);assert.match(api,/updateOwnProfile/);assert.match(api,/changeOwnPassword/);assert.match(api,/listSystems/);assert.match(api,/saveSystem/);assert.match(api,/system_id/);assert.doesNotMatch(api,/remove\(old/);
 assert.match(db,/const META='documents';const FILES='files'/);assert.match(sync,/f\.blob\.slice\(0,5\)\.arrayBuffer/);
-assert.match(sw,/const VERSION='1\.1\.5'/);assert.match(sw,/systems\.css/);assert.match(sw,/systems-ux\.js/);assert.doesNotMatch(sw,/l17-ouro-hero\.svg/);assert.match(sw,/byd-skyrail-/);
+assert.match(sw,/const VERSION='1\.1\.6'/);assert.match(sw,/systems\.css/);assert.match(sw,/systems-ux\.js/);assert.doesNotMatch(sw,/l17-ouro-hero\.svg/);assert.match(sw,/byd-skyrail-/);
 
 assert.match(app,/routeFromHash/);assert.match(app,/\['home', 'documents', 'profile', 'audit'\]/);assert.match(app,/route === 'audit' && !isAdmin\(\)/);assert.match(app,/id="document-search"/);assert.match(app,/type="submit">\$\{icon\('search'\)\} Pesquisar/);assert.match(app,/id="profile-form"/);assert.match(app,/id="password-form"/);assert.match(app,/Conferência \/ Auditoria/);
 
-assert.match(systemsUx,/byd-skyrail:systems-cache/);assert.match(systemsUx,/systems-home-section/);assert.match(systemsUx,/#\/documents\?system=/);assert.match(systemsUx,/Todos os sistemas/);assert.match(systemsUx,/Filtrar por disciplina/);assert.match(systemsUx,/doc\.system_id === selected/);assert.match(systemsCss,/systems-card-grid/);assert.match(systemsCss,/canonical-system-filter/);
+assert.match(systemsUx,/byd-skyrail:systems-cache/);assert.match(systemsUx,/systems-home-section/);assert.match(systemsUx,/#\/documents\?system=/);assert.match(systemsUx,/Todos os sistemas/);assert.match(systemsUx,/Filtrar por disciplina/);assert.match(systemsUx,/doc\.system_id === selected/);assert.match(systemsUx,/node\.hidden = true/);assert.match(systemsUx,/canonicalNodes\.shift/);assert.match(systemsUx,/canonicalNodes\.forEach\(node => node\.remove\(\)\)/);assert.match(systemsCss,/systems-card-grid/);assert.match(systemsCss,/canonical-system-filter/);
 
 assert.match(uxCss,/\.hero-rail\{display:none!important;background:none!important/);assert.doesNotMatch(uxCss,/l17-ouro-hero\.svg/);assert.match(uxCss,/content:"Linha 17-Ouro"/);assert.doesNotMatch(uxJs,/enhanceHero|l17-train|l17-skyline|enhanceBrand/);assert.match(uxJs,/data-ux-clickable/);assert.match(uxJs,/openDocumentDetails/);assert.match(uxJs,/Adicionar usuário/);
 
