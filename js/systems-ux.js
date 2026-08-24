@@ -266,6 +266,10 @@ function schedule() {
 }
 
 new MutationObserver(() => {
+  if (route().name === 'home') {
+    if ($('.hero') && !$('.systems-home-section')) ensureHomeSystems();
+    return;
+  }
   if (route().name === 'documents') schedule();
 }).observe(document.querySelector('#app'), { childList: true, subtree: true });
 
