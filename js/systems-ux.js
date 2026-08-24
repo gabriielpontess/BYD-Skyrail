@@ -77,8 +77,19 @@ function renderSystemFilter() {
   const panel = $('.search-panel');
   if (!panel) return;
 
-  // Remove the legacy UX helper only once; canonical systems owns this control.
-  $$('.ux-system-filter', panel).forEach(node => node.remove());
+  // The generic UX layer still owns a legacy discipline-derived select.
+  // Keep one legacy node present but inert/hidden so that its MutationObserver
+  // does not recreate it. Canonical systems is the only visible system filter.
+  $$('.ux-system-filter', panel).forEach(node => {
+    if (!node.hidden) node.hidden = true;
+    if (node.getAttribute('aria-hidden') !== 'true') node.setAttribute('aria-hidden', 'true');
+  });
+
+  // Defensive cleanup for DOMs that may already contain duplicated canonical
+  // controls from an older cached script. Preserve exactly one instance.
+  const canonicalNodes = $$('.canonical-system-filter', panel);
+  let wrapper = canonicalNodes.shift() || null;
+  canonicalNodes.forEach(node => node.remove());
 
   const selected = selectedSystemId();
   const activeSignature = systems
@@ -86,7 +97,6 @@ function renderSystemFilter() {
     .map(system => `${system.id}:${system.name}`)
     .join('|');
 
-  let wrapper = $('.canonical-system-filter', panel);
   if (!wrapper) {
     wrapper = document.createElement('label');
     wrapper.className = 'canonical-system-filter';
