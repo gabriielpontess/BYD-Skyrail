@@ -1,6 +1,4 @@
-/* PR #3 — design layer aligned with the approved blue / white / gold UI.
-   This file intentionally overrides only presentation rules from the base shell.
-   The hero is a single SVG composition; no duplicated CSS train drawing remains. */
+/* PR #3 — design layer aligned with the approved blue / white / gold UI. */
 
 /* Header brand ---------------------------------------------------------- */
 .topbar .brand-lockup{gap:0;min-width:155px}
@@ -10,13 +8,13 @@
 .topbar .brand-copy small{display:none!important}
 .topbar .brand-copy::after{content:"Linha 17-Ouro";display:block;margin-top:4px;color:var(--gold-400);font-size:11px;line-height:1;font-weight:900;letter-spacing:.035em}
 
-/* Home hero ------------------------------------------------------------- */
-.hero{min-height:224px;padding:38px 42px;background:linear-gradient(100deg,#fff 0 50%,#eef5fc 50% 100%);border-color:#d4e0ec;box-shadow:0 5px 20px rgba(3,38,79,.06)}
-.hero-copy{width:50%;max-width:690px;padding-right:36px}
+/* Home — hero artwork intentionally removed until an official/licensed image exists. */
+.hero{min-height:0;padding:34px 42px;background:#fff;border-color:#d4e0ec;box-shadow:0 5px 20px rgba(3,38,79,.06)}
+.hero-copy{width:100%;max-width:760px;padding-right:0}
 .hero-eyebrow{display:none!important}
 .hero h1{font-size:34px;line-height:1.12;margin:0 0 14px;letter-spacing:-.04em}
-.hero p{font-size:16px;line-height:1.62;max-width:620px}
-.hero-rail{display:block!important;position:absolute;inset:0 0 0 auto;width:50%;height:100%;opacity:1;background:url('./assets/l17-ouro-hero.svg') center/cover no-repeat;border-left:1px solid rgba(7,71,135,.06)}
+.hero p{font-size:16px;line-height:1.62;max-width:660px}
+.hero-rail{display:none!important;background:none!important;border:0!important}
 .hero-rail::before,.hero-rail::after{content:none!important;display:none!important}
 
 /* Documents ------------------------------------------------------------- */
@@ -24,7 +22,6 @@
 .ux-system-filter span{white-space:nowrap}
 .ux-system-filter select{width:100%;min-height:44px;border:1px solid #cfd9e6;border-radius:9px;background:#fff;padding:0 38px 0 12px;color:var(--blue-950);font-weight:750;outline:0}
 .ux-system-filter select:focus{border-color:var(--blue-700);box-shadow:0 0 0 3px rgba(11,90,164,.12)}
-
 .doc-table tbody tr[data-ux-clickable="true"]{cursor:pointer;transition:background .15s ease,box-shadow .15s ease,transform .12s ease}
 .doc-table tbody tr[data-ux-clickable="true"]:hover{background:#f3f8fd;box-shadow:inset 3px 0 0 var(--gold-500)}
 .doc-table tbody tr[data-ux-clickable="true"]:focus-visible{outline:3px solid rgba(226,164,0,.5);outline-offset:-3px}
@@ -49,25 +46,19 @@
 .ux-users-toolbar h3{margin:0}
 .ux-add-user-note{margin-top:12px;padding:12px 13px;border:1px solid #f0d58d;border-radius:9px;background:var(--gold-100);color:#765100;font-size:12px;font-weight:700;line-height:1.45}
 
-/* Tablet: no decorative hero artwork. The content becomes a clean card. */
 @media (max-width:1199px){
   .topbar .brand-lockup{min-width:135px}
   .topbar .brand-copy strong{font-size:17px}
   .topbar .brand-copy::after{font-size:10px}
-  .hero{min-height:0;padding:30px;background:#fff!important}
-  .hero-copy{width:100%;max-width:none;padding-right:0}
-  .hero-rail{display:none!important;background:none!important;border:0}
+  .hero{padding:30px;background:#fff!important}
   .hero h1{font-size:30px}
 }
 
-/* Mobile: compact shell; hero artwork remains removed for responsiveness. */
 @media (max-width:767px){
   .topbar .brand-lockup{min-width:118px}
   .topbar .brand-copy strong{font-size:15px}
   .topbar .brand-copy::after{font-size:9px;margin-top:3px}
-  .hero{padding:22px 20px;background:#fff!important;min-height:0;align-items:center}
-  .hero-copy{width:100%}
-  .hero-rail{display:none!important}
+  .hero{padding:22px 20px;background:#fff!important}
   .hero h1{max-width:none;font-size:26px}
   .hero p{max-width:none;font-size:13px}
   .ux-system-filter{grid-template-columns:1fr;gap:7px;align-items:stretch}
