@@ -775,8 +775,8 @@ async function bootAuthenticated() {
   shell();
   state.view = routeFromHash();
   updateNav();
+  if (navigator.onLine) await doSync(false);
   await renderCurrentView();
-  if (navigator.onLine) await doSync();
 }
 
 async function boot() {
