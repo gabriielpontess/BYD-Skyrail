@@ -1,3 +1,12 @@
-import{listActive,downloadPdf}from'./api.js';import{listLocal,getFile,putMeta,putFile,deleteDoc}from'./db.js';import{fileChanged}from'./model.js';
-const KEY='byd-skyrail-last-sync';export const lastSync=()=>localStorage.getItem(KEY)||'';
-export async function syncAll(onProgress=()=>{}){if(!navigator.onLine)throw new Error('Sem internet para sincronizar.');const remote=await listActive();const local=await listLocal();const map=new Map(local.map(x=>[x.id,x]));let downloaded=0;for(let i=0;i<remote.length;i++){const r=remote[i];onProgress(i+1,remote.length,r.code);const l=map.get(r.id)||null;const f=await getFile(r.id);let needs=fileChanged(l,r)||!f?.blob; if(!needs&&f?.blob){try{await f.blob.slice(0,5).arrayBuffer()}catch{needs=true}}if(needs){const blob=await downloadPdf(r.file_path);await putFile(r.id,blob,r.file_path,r.revision);downloaded++;}await putMeta(r)}const ids=new Set(remote.map(x=>x.id));for(const l of local)if(!ids.has(l.id))await deleteDoc(l.id);const done=new Date().toISOString();localStorage.setItem(KEY,done);return{total:remote.length,downloaded,done}}
+import { documentRepository } from './documents/catalog-repository.js';
+
+const KEY='byd-skyrail-last-sync';
+export const lastSync=()=>localStorage.getItem(KEY)||'';
+export async function syncAll(onProgress=()=>{}){
+  const docs=await documentRepository.getAll();
+  docs.forEach((doc,index)=>onProgress(index+1,docs.length,doc.code));
+  const info=await documentRepository.info();
+  const done=info.generatedAt||lastSync()||'';
+  if(done)localStorage.setItem(KEY,done);
+  return{total:docs.length,downloaded:0,done,local:true};
+}
