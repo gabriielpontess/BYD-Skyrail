@@ -1,0 +1,107 @@
+import { strFromU8, Unzip, UnzipInflate } from 'fflate';
+import { documentRepository } from './catalog-repository.js';
+import { documentFileService } from './file-service.js';
+import { packageStagingService } from './package-staging-service.js';
+
+const MANIFEST='manifest.json';
+const DEFAULT_CATALOG='documents.json';
+const MAX_SCHEMA_VERSION=1;
+
+function concat(chunks,total){const out=new Uint8Array(total);let offset=0;for(const chunk of chunks){out.set(chunk,offset);offset+=chunk.length}return out}
+function parseJson(text,label){try{return JSON.parse(text)}catch{throw new Error(`${label} contém JSON inválido.`)}}
+function validateManifest(value){
+  if(!value||typeof value!=='object')throw new Error('Manifesto do pacote inválido.');
+  if(!String(value.packageVersion||'').trim())throw new Error('Manifesto sem packageVersion.');
+  return {packageVersion:String(value.packageVersion).trim(),createdAt:value.createdAt||null,catalogFile:String(value.catalogFile||DEFAULT_CATALOG).trim(),schemaVersion:Number(value.schemaVersion||1)};
+}
+function validateCatalog(value,manifest){
+  if(!value||typeof value!=='object'||!Array.isArray(value.documents))throw new Error('Catálogo documents.json inválido.');
+  const schema=Number(value.schemaVersion||manifest.schemaVersion||1);
+  if(schema>MAX_SCHEMA_VERSION)throw new Error(`Pacote incompatível: schemaVersion ${schema}.`);
+  const ids=new Set(),codes=new Set();
+  for(const doc of value.documents){
+    const id=String(doc.id||'').trim(),code=String(doc.code||'').trim(),title=String(doc.title||'').trim(),revision=String(doc.revision||'').trim(),file=String(doc.file||doc.file_path||'').trim();
+    if(!id||!code||!title||!revision||!file)throw new Error('Há documento com campos obrigatórios ausentes no catálogo.');
+    if(ids.has(id))throw new Error(`ID duplicado no catálogo: ${id}`);
+    if(codes.has(code.toLocaleLowerCase('pt-BR')))throw new Error(`Código duplicado no catálogo: ${code}`);
+    ids.add(id);codes.add(code.toLocaleLowerCase('pt-BR'));
+  }
+  return value;
+}
+
+async function unzipToStaging(file,runId,onProgress){
+  if(!(file instanceof File)||!/\.zip$/i.test(file.name))throw new Error('Selecione um pacote .zip válido.');
+  const textEntries=new Map();
+  const staged=new Set();
+  const writes=[];
+  let entries=0;
+  const unzip=new Unzip(entry=>{
+    const name=String(entry.name||'').replace(/^\.\//,'');
+    const chunks=[];let size=0;
+    entry.ondata=(error,data,final)=>{
+      if(error)throw error;
+      chunks.push(data);size+=data.length;
+      if(!final)return;
+      entries++;onProgress?.({phase:'extract',entries,name});
+      const bytes=concat(chunks,size);
+      if(name===MANIFEST||name.endsWith('/'+MANIFEST)||name===DEFAULT_CATALOG||name.endsWith('/'+DEFAULT_CATALOG)) textEntries.set(name,strFromU8(bytes));
+      else if(/^documents\/.+\.pdf$/i.test(name)){staged.add(name);writes.push(packageStagingService.put(runId,name,bytes));}
+    };
+    entry.start();
+  });
+  unzip.register(UnzipInflate);
+  const reader=file.stream().getReader();
+  try{
+    while(true){const {value,done}=await reader.read();unzip.push(value||new Uint8Array(),done);if(done)break;}
+    await Promise.all(writes);
+    return {textEntries,staged};
+  }catch(error){await packageStagingService.clear(runId);throw new Error(`Falha ao extrair pacote: ${error?.message||error}`)}
+}
+
+export class PackageImportService{
+  async inspect(file,onProgress){
+    const runId=crypto.randomUUID();
+    const extracted=await unzipToStaging(file,runId,onProgress);
+    try{
+      const manifestText=[...extracted.textEntries.entries()].find(([name])=>name===MANIFEST||name.endsWith('/'+MANIFEST))?.[1];
+      if(!manifestText)throw new Error('Pacote sem manifest.json.');
+      const manifest=validateManifest(parseJson(manifestText,'manifest.json'));
+      const catalogText=[...extracted.textEntries.entries()].find(([name])=>name===manifest.catalogFile||name.endsWith('/'+manifest.catalogFile))?.[1];
+      if(!catalogText)throw new Error(`Pacote sem ${manifest.catalogFile}.`);
+      const rawCatalog=validateCatalog(parseJson(catalogText,manifest),manifest);
+      const active=rawCatalog.documents.filter(doc=>String(doc.status||'active').toLowerCase()==='active'&&doc.active!==false);
+      const missing=active.filter(doc=>!extracted.staged.has(`documents/${doc.file||doc.file_path}`));
+      if(missing.length)throw new Error(`Pacote incompleto: ${missing.length} PDF(s) referenciado(s) não foram encontrados.`);
+      return {runId,manifest,rawCatalog,staged:extracted.staged,documentCount:rawCatalog.documents.length,packageSize:file.size};
+    }catch(error){await packageStagingService.clear(runId);throw error}
+  }
+
+  async commit(plan,onProgress){
+    const {runId,manifest,rawCatalog}=plan;
+    const nextCatalog={...rawCatalog,schemaVersion:Number(rawCatalog.schemaVersion||manifest.schemaVersion||1),catalogVersion:String(rawCatalog.catalogVersion||manifest.packageVersion),generatedAt:rawCatalog.generatedAt||manifest.createdAt||new Date().toISOString(),packageVersion:manifest.packageVersion};
+    const docs=nextCatalog.documents.map(doc=>({...doc,file_path:`${manifest.packageVersion}__${doc.file||doc.file_path}`,file:doc.file||doc.file_path,package_version:manifest.packageVersion}));
+    nextCatalog.documents=docs;
+    try{
+      let done=0;
+      for(const doc of docs.filter(item=>String(item.status||'active').toLowerCase()==='active'&&item.active!==false)){
+        const source=`documents/${doc.file}`;
+        const bytes=await packageStagingService.get(runId,source);
+        if(!bytes)throw new Error(`Arquivo ausente durante commit: ${doc.file}`);
+        await documentFileService.putBytes(doc,bytes);
+        done++;onProgress?.({phase:'write',done,total:docs.length,code:doc.code});
+      }
+      await documentRepository.replace(nextCatalog);
+      await packageStagingService.clear(runId);
+      return await documentRepository.info();
+    }catch(error){
+      await packageStagingService.clear(runId);
+      const message=String(error?.message||error);
+      if(/space|quota|enospc/i.test(message))throw new Error('Não há espaço suficiente para concluir a atualização.');
+      throw new Error(`Importação interrompida sem substituir o catálogo ativo: ${message}`);
+    }
+  }
+
+  async import(file,onProgress){const plan=await this.inspect(file,onProgress);return this.commit(plan,onProgress)}
+}
+
+export const packageImportService=new PackageImportService();
