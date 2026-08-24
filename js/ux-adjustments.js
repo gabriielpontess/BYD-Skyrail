@@ -2,6 +2,9 @@ const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 let scheduled = false;
 
+// Canonical Sistema filtering is intentionally NOT implemented in this module.
+// js/systems-ux.js is the sole owner of the Sistema control.
+
 function escapeHtml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
