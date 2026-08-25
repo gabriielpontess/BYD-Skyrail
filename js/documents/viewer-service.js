@@ -1,10 +1,19 @@
-import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { documentRepository } from './catalog-repository.js';
 import { documentFileService } from './file-service.js';
 import { clamp, fitWidthScale, renderPixelRatio, zoomLabel } from './viewer-rendering.js';
 
-GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
+let pdfJsPromise=null;
+async function loadPdfJs(){
+  if(!pdfJsPromise){
+    pdfJsPromise=import('pdfjs-dist').then(module=>{
+      module.GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
+      return module;
+    });
+  }
+  return pdfJsPromise;
+}
+
 const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 const safeFileName=value=>String(value??'documento').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').trim();
@@ -21,6 +30,7 @@ export class DocumentViewerService{
     const blob=await documentFileService.getBlob(doc);
     if(!blob)throw new Error('PDF não encontrado no armazenamento local. Importe o pacote documental correspondente.');
 
+    const [{getDocument}]=await Promise.all([loadPdfJs()]);
     const returnFocus=document.activeElement;
     const bytes=new Uint8Array(await blob.arrayBuffer());
     const pdf=await getDocument({data:bytes}).promise;
