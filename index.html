@@ -18,6 +18,65 @@
 <body>
   <div id="app"></div>
   <div id="toast" class="toast" aria-live="polite"></div>
+  <aside id="boot-diagnostic" hidden style="position:fixed;inset:0;z-index:2147483647;background:#f4f7fb;color:#0b2f5b;padding:max(24px,env(safe-area-inset-top)) 20px 24px;font:14px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:auto">
+    <div style="max-width:720px;margin:0 auto;background:#fff;border:1px solid #d7e1ec;border-radius:16px;padding:20px;box-shadow:0 12px 40px rgba(15,23,42,.12)">
+      <strong style="display:block;font-size:20px;margin-bottom:6px">Diagnóstico de inicialização</strong>
+      <p style="margin:0 0 14px;color:#52657a">O BYD Skyrail não concluiu a inicialização. Tire uma captura desta tela e envie no chat.</p>
+      <pre id="boot-diagnostic-details" style="white-space:pre-wrap;word-break:break-word;margin:0;background:#f6f8fb;border-radius:10px;padding:12px;color:#132a44"></pre>
+      <button id="boot-reload" type="button" style="margin-top:14px;border:1px solid #c8d6e5;border-radius:9px;background:#fff;color:#06356d;padding:10px 14px;font-weight:700">Tentar novamente</button>
+    </div>
+  </aside>
+  <script>
+    (() => {
+      const errors = [];
+      const startedAt = Date.now();
+      const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      const remember = value => { errors.push(String(value || 'erro desconhecido')); if (errors.length > 8) errors.shift(); };
+      addEventListener('error', event => {
+        const target = event.target;
+        if (target && target !== window && (target.src || target.href)) remember(`Recurso: ${target.src || target.href}`);
+        else remember(`Erro: ${event.message || 'sem mensagem'}${event.filename ? ` @ ${event.filename}:${event.lineno || 0}` : ''}`);
+      }, true);
+      addEventListener('unhandledrejection', event => remember(`Promise: ${event.reason?.message || event.reason || 'rejeição sem mensagem'}`));
+      globalThis.__BYD_BOOT_DIAG = { errors, startedAt };
+      const storageCheck = () => {
+        try { localStorage.setItem('__byd_boot_test','1'); localStorage.removeItem('__byd_boot_test'); return 'ok'; }
+        catch (error) { return `falhou: ${error?.name || error}`; }
+      };
+      setTimeout(async () => {
+        const app = document.querySelector('#app');
+        const rect = app?.getBoundingClientRect();
+        const hasVisibleApp = Boolean(app && app.textContent.trim() && rect && rect.height > 24);
+        if (hasVisibleApp) return;
+        let sw = 'indisponível';
+        try {
+          if ('serviceWorker' in navigator) {
+            const registration = await navigator.serviceWorker.getRegistration();
+            sw = registration ? `registrado · controller=${navigator.serviceWorker.controller ? 'sim' : 'não'} · active=${registration.active?.state || 'não'}` : 'não registrado';
+          }
+        } catch (error) { sw = `erro: ${error?.message || error}`; }
+        const details = [
+          `build: PR8-ios-diag-1`,
+          `tempo: ${Math.round((Date.now()-startedAt)/1000)}s`,
+          `modo standalone: ${isStandalone() ? 'sim' : 'não'}`,
+          `online: ${navigator.onLine ? 'sim' : 'não'}`,
+          `URL: ${location.href}`,
+          `hash: ${location.hash || '(vazio)'}`,
+          `localStorage: ${storageCheck()}`,
+          `service worker: ${sw}`,
+          `app HTML: ${app?.innerHTML?.length || 0} caracteres`,
+          `app altura: ${Math.round(rect?.height || 0)}px`,
+          `erros capturados: ${errors.length ? '\n- ' + errors.join('\n- ') : 'nenhum'}`,
+          `user agent: ${navigator.userAgent}`
+        ];
+        document.querySelector('#boot-diagnostic-details').textContent = details.join('\n');
+        document.querySelector('#boot-diagnostic').hidden = false;
+      }, 4500);
+      addEventListener('DOMContentLoaded', () => {
+        document.querySelector('#boot-reload')?.addEventListener('click', () => location.reload());
+      });
+    })();
+  </script>
   <script type="module" src="./js/app.js"></script>
   <script type="module" src="./js/systems-ux.js"></script>
   <script type="module" src="./js/ux-adjustments.js"></script>
@@ -31,6 +90,7 @@
           await registration.update();
         } catch (error) {
           console.warn('[BYD Skyrail] Service Worker indisponível:', error);
+          globalThis.__BYD_BOOT_DIAG?.errors?.push(`Service Worker: ${error?.message || error}`);
         }
       });
     }
