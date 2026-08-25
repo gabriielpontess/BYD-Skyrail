@@ -53,6 +53,10 @@ document.addEventListener('click',event=>{
   const button=event.target.closest?.('[data-edit-user]');if(!button)return;
   const summary=button.closest('.user-row')?.querySelector('small')?.textContent||'';
   pendingEditorRole=String(summary.split('·')[0]||'').trim().toUpperCase();
+  // O modal de edição é anexado diretamente ao document.body pelo app.js,
+  // fora da raiz #app observada abaixo. Executar após o clique garante que o
+  // select já exista sem voltar a observar/regravar todo o body.
+  queueMicrotask(enhanceAdminRoleEditor);
 },true);
 const appRoot=document.querySelector('#app');
 if(appRoot)new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(appRoot,{childList:true,subtree:true});
