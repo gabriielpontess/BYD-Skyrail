@@ -9,9 +9,11 @@ const routeInfo=()=>{const raw=location.hash.replace(/^#\/?/,'');const [name='',
 const member=()=>{try{return JSON.parse(localStorage.getItem('byd-skyrail-member-cache')||'null')}catch{return null}};
 const role=()=>String(member()?.role||'USER').toUpperCase();
 const canImport=()=>['ADMIN','CONTROLLER'].includes(role());
+const compactMode=()=>globalThis.matchMedia?.('(max-width:767px)').matches===true;
 const PAGE_SIZE=100;
 let enhancing=false;
 let viewportTimer=null;
+let lastCompactMode=null;
 const localState={query:'',discipline:'ALL',documentType:'ALL',approvalStatus:'ALL',page:0};
 
 function approvalBadgeClass(value){
@@ -117,7 +119,8 @@ async function renderLocalDocumentsPage(){
     const pageCount=Math.max(1,Math.ceil(visible.length/PAGE_SIZE));
     localState.page=Math.max(0,Math.min(localState.page,pageCount-1));
     const pageDocs=visible.slice(localState.page*PAGE_SIZE,(localState.page+1)*PAGE_SIZE);
-    const compact=globalThis.matchMedia?.('(max-width:767px)').matches===true;
+    const compact=compactMode();
+    lastCompactMode=compact;
     const results=visible.length?(compact?mobileRows(pageDocs,systemMap):desktopRows(pageDocs,systemMap)):`<div class="empty-state"><h3>Nenhum documento encontrado</h3><p>Revise o texto pesquisado ou remova um dos filtros para ampliar os resultados.</p></div>`;
 
     page.innerHTML=`<div class="page-head"><div><h1>Documentos</h1><p>Pesquise e filtre o catálogo armazenado localmente, inclusive sem internet.</p></div></div>
@@ -150,7 +153,13 @@ async function enhance(){if(enhancing)return;enhancing=true;try{await showCatalo
 new MutationObserver(()=>queueMicrotask(enhance)).observe(document.querySelector('#app'),{childList:true,subtree:true});
 addEventListener('hashchange',()=>{const page=$('#page');if(page)delete page.dataset.localDocumentsRendering;localState.page=0;enhance()});
 addEventListener('load',enhance);enhance();
-addEventListener('resize',()=>{if(routeInfo().name!=='documents')return;clearTimeout(viewportTimer);viewportTimer=setTimeout(()=>{const page=$('#page');if(page){delete page.dataset.localDocumentsRendering;renderLocalDocumentsPage()}},180)});
+addEventListener('resize',()=>{
+  if(routeInfo().name!=='documents')return;
+  const nextCompact=compactMode();
+  if(nextCompact===lastCompactMode)return;
+  clearTimeout(viewportTimer);
+  viewportTimer=setTimeout(()=>{const page=$('#page');if(page){delete page.dataset.localDocumentsRendering;renderLocalDocumentsPage()}},120);
+});
 
 document.addEventListener('click',async event=>{
   const trigger=event.target.closest?.('[data-open-doc]');if(!trigger)return;
