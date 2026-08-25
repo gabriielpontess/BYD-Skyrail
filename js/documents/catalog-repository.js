@@ -20,6 +20,8 @@ function normalizeCatalog(input) {
     description: text(item.description),
     document_type: text(item.document_type ?? item.documentType),
     system_id: text(item.system_id ?? item.systemId),
+    approval_status: text(item.approval_status ?? item.source_status),
+    source_status: text(item.source_status ?? item.approval_status),
     status: text(item.status || (item.active === false ? 'inactive' : 'active')).toLowerCase(),
     file_path: text(item.file_path ?? item.file),
     updated_at: text(item.updated_at ?? item.updatedAt ?? input.generatedAt ?? new Date(0).toISOString()),
@@ -95,10 +97,10 @@ export class JsonDocumentRepository {
   }
 
   async search(query = '', filters = {}) {
-    const docs = await this.getAll({ includeInactive: filters.status === 'ALL' });
+    const docs = await this.getAll({ includeInactive: filters.lifecycleStatus === 'ALL' });
     const q = fold(query), qCode = normalizeCode(query);
     const rank = doc => {
-      const code = fold(doc.code), codeN = normalizeCode(doc.code), title = fold(doc.title), description = fold(doc.description), system = fold(doc.system_name), discipline = fold(doc.discipline), type = fold(doc.document_type);
+      const code = fold(doc.code), codeN = normalizeCode(doc.code), title = fold(doc.title), description = fold(doc.description), system = fold(doc.system_name), discipline = fold(doc.discipline), type = fold(doc.document_type), approvalStatus = fold(doc.approval_status || doc.source_status);
       if (!q) return 100;
       if (codeN === qCode) return 0;
       if (codeN.startsWith(qCode)) return 10;
@@ -106,14 +108,15 @@ export class JsonDocumentRepository {
       if (title.startsWith(q)) return 30;
       if (title.includes(q)) return 40;
       if (description.includes(q)) return 50;
-      if (`${system} ${discipline} ${type}`.includes(q)) return 60;
+      if (`${system} ${discipline} ${type} ${approvalStatus}`.includes(q)) return 60;
       return Number.POSITIVE_INFINITY;
     };
     return docs
       .filter(doc => (filters.systemId === undefined || filters.systemId === 'ALL' || doc.system_id === filters.systemId)
         && (filters.discipline === undefined || filters.discipline === 'ALL' || doc.discipline === filters.discipline)
         && (filters.documentType === undefined || filters.documentType === 'ALL' || doc.document_type === filters.documentType)
-        && (filters.status === undefined || filters.status === 'ALL' || doc.status === filters.status))
+        && (filters.lifecycleStatus === undefined || filters.lifecycleStatus === 'ALL' || doc.status === filters.lifecycleStatus)
+        && (filters.approvalStatus === undefined || filters.approvalStatus === 'ALL' || text(doc.approval_status || doc.source_status) === filters.approvalStatus))
       .map(doc => ({ doc, rank: rank(doc) })).filter(row => Number.isFinite(row.rank))
       .sort((a,b) => a.rank - b.rank || a.doc.code.localeCompare(b.doc.code,'pt-BR',{numeric:true,sensitivity:'base'}))
       .map(row => row.doc);
