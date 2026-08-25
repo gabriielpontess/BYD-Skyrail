@@ -74,7 +74,7 @@ export class NotificationService{
 
   readAt(userId){return storage()?.getItem(`${READ_PREFIX}${text(userId)||'anonymous'}`)||''}
   unreadCount(userId){const readAt=this.readAt(userId);return this.list().filter(item=>!readAt||String(item.createdAt)>readAt).length}
-  markAllRead(userId){if(storage())storage().setItem(`${READ_PREFIX}${text(userId)||'anonymous'}`,nowIso());globalThis.dispatchEvent?.(new CustomEvent('byd:notifications-changed'))}
+  markAllRead(userId){if(storage())storage().setItem(`${READ_PREFIX}${text(userId)||'anonymous'}`,nowIso())}
   clear(){storage()?.removeItem(FEED_KEY);globalThis.dispatchEvent?.(new CustomEvent('byd:notifications-changed'))}
 }
 
