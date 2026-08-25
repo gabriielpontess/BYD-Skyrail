@@ -1,7 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "@supabase/supabase-js";
 
-const APP_URL = "https://byd-skyrail.netlify.app";
+const PRODUCTION_URL = "https://byd-skyrail.netlify.app";
+const PREVIEW_URL = "https://deploy-preview-8--byd-skyrail.netlify.app";
+const TRUSTED_REDIRECTS = new Set([PRODUCTION_URL, PREVIEW_URL]);
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -11,6 +13,11 @@ const corsHeaders = {
 
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders });
+
+function inviteRedirect(req: Request) {
+  const origin = String(req.headers.get("Origin") || "").trim().replace(/\/$/, "");
+  return TRUSTED_REDIRECTS.has(origin) ? origin : PRODUCTION_URL;
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
@@ -59,9 +66,10 @@ Deno.serve(async (req: Request) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(400, { error: "E-mail inválido." });
   if (!["ADMIN", "CONTROLLER", "USER"].includes(role)) return json(400, { error: "Perfil inválido." });
 
+  const redirectTo = inviteRedirect(req);
   const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
     data: { display_name: displayName },
-    redirectTo: APP_URL
+    redirectTo
   });
 
   if (inviteError || !inviteData?.user) {
@@ -91,6 +99,7 @@ Deno.serve(async (req: Request) => {
   return json(201, {
     user: member,
     invited_email: email,
+    redirect_to: redirectTo,
     message: "Convite enviado e perfil criado com sucesso."
   });
 });
