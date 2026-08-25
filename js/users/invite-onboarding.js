@@ -1,4 +1,5 @@
 import { getClient } from '../client.js';
+import { inviteRedirectForLocation } from './user-provisioning.js';
 import {
   authCallbackType,
   isInviteCallback,
@@ -48,7 +49,7 @@ async function memberActivation(client, userId) {
   return data || null;
 }
 
-function renderPasswordScreen(session, client, { recovery = false, pendingActivation = false } = {}) {
+function renderPasswordScreen(session, client, { pendingActivation = false } = {}) {
   let root = document.querySelector('#invite-activation-root');
   if (!root) {
     root = document.createElement('div');
@@ -129,6 +130,63 @@ export async function bootstrapInviteOnboarding() {
     return false;
   }
 
-  renderPasswordScreen(session, client, { recovery, pendingActivation });
+  renderPasswordScreen(session, client, { pendingActivation });
   return true;
+}
+
+function recoveryMessage(form, message, error = false) {
+  let box = form.querySelector('[data-password-recovery-message]');
+  if (!box) {
+    box = document.createElement('div');
+    box.dataset.passwordRecoveryMessage = '1';
+    box.setAttribute('role', 'status');
+    form.append(box);
+  }
+  box.textContent = message;
+  box.style.cssText = `font-size:13px;line-height:1.45;text-align:center;color:${error ? '#b42318' : '#34506f'};`;
+}
+
+function attachPasswordRecovery() {
+  const form = document.querySelector('#login-form');
+  if (!form || form.querySelector('[data-password-recovery]')) return;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.dataset.passwordRecovery = '1';
+  button.textContent = 'Esqueci minha senha';
+  button.style.cssText = 'border:0;background:transparent;color:#174a7e;font:inherit;font-size:14px;font-weight:700;cursor:pointer;padding:2px 0 0;text-align:center;';
+  form.append(button);
+
+  button.addEventListener('click', async () => {
+    const email = String(form.elements.email?.value || '').trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      recoveryMessage(form, 'Informe seu e-mail acima para recuperar o acesso.', true);
+      form.elements.email?.focus();
+      return;
+    }
+
+    button.disabled = true;
+    const original = button.textContent;
+    button.textContent = 'Enviando…';
+    try {
+      const client = getClient();
+      const { error } = await client.auth.resetPasswordForEmail(email, {
+        redirectTo: inviteRedirectForLocation()
+      });
+      if (error) throw error;
+      recoveryMessage(form, 'Se este e-mail estiver cadastrado, enviaremos um link para definir uma nova senha.');
+    } catch {
+      recoveryMessage(form, 'Não foi possível solicitar a recuperação agora. Tente novamente.', true);
+    } finally {
+      button.disabled = false;
+      button.textContent = original;
+    }
+  });
+}
+
+if (typeof document !== 'undefined') {
+  bootstrapInviteOnboarding().catch(error => console.error('[BYD Skyrail] Falha no onboarding:', error));
+  attachPasswordRecovery();
+  const observer = new MutationObserver(attachPasswordRecovery);
+  observer.observe(document.documentElement, { childList: true, subtree: true });
 }
