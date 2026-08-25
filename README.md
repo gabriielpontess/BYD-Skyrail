@@ -21,3 +21,5 @@ O projeto Supabase standalone foi criado em `sa-east-1`, o schema inicial já fo
 
 ## Deploy
 O projeto Netlify `byd-skyrail` está vinculado ao repositório `gabriielpontess/BYD-Skyrail`, com `main` como branch de produção. Mudanças do PR standalone devem ser validadas em Deploy Preview antes do merge e do smoke test final no tablet.
+
+<!-- deploy-preview-retrigger -->
