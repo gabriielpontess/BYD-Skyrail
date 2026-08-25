@@ -30,14 +30,16 @@ function renderControllerUpdates(){
   document.querySelectorAll('[data-controller-updates]').forEach(button=>button.classList.add('active'));
 }
 
-function enhanceAdminRoleEditor(){
-  const select=document.querySelector('#user-admin-form select[name="role"]');
-  if(!select)return;
+function enhanceAdminRoleEditor(root=document){
+  const select=root.querySelector?.('#user-admin-form select[name="role"]')||document.querySelector('#user-admin-form select[name="role"]');
+  if(!select)return false;
   if(!select.querySelector('option[value="CONTROLLER"]')){
     const option=document.createElement('option');option.value='CONTROLLER';option.textContent='CONTROLLER';
-    const userOption=select.querySelector('option[value="USER"]');select.insertBefore(option,userOption||null);
+    const adminOption=select.querySelector('option[value="ADMIN"]');
+    select.insertBefore(option,adminOption||null);
   }
   if(pendingEditorRole&&['ADMIN','CONTROLLER','USER'].includes(pendingEditorRole)&&select.value!==pendingEditorRole)select.value=pendingEditorRole;
+  return true;
 }
 
 function enhanceRolePresentation(){
@@ -53,12 +55,25 @@ document.addEventListener('click',event=>{
   const button=event.target.closest?.('[data-edit-user]');if(!button)return;
   const summary=button.closest('.user-row')?.querySelector('small')?.textContent||'';
   pendingEditorRole=String(summary.split('·')[0]||'').trim().toUpperCase();
-  // O modal de edição é anexado diretamente ao document.body pelo app.js,
-  // fora da raiz #app observada abaixo. Executar após o clique garante que o
-  // select já exista sem voltar a observar/regravar todo o body.
-  queueMicrotask(enhanceAdminRoleEditor);
+  queueMicrotask(()=>enhanceAdminRoleEditor());
+  setTimeout(()=>enhanceAdminRoleEditor(),0);
 },true);
+
 const appRoot=document.querySelector('#app');
 if(appRoot)new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(appRoot,{childList:true,subtree:true});
+
+// O editor de usuário existente é anexado diretamente ao body pelo app.js.
+// Observamos somente filhos diretos do body: quando um modal é adicionado,
+// enriquecemos seu select uma única vez. Como subtree=false, inserir a option
+// dentro do select não retroalimenta este observer nem cria loop de renderização.
+if(document.body)new MutationObserver(records=>{
+  for(const record of records){
+    for(const node of record.addedNodes){
+      if(!(node instanceof Element))continue;
+      if(node.matches?.('.modal-backdrop')||node.querySelector?.('#user-admin-form'))enhanceAdminRoleEditor(node);
+    }
+  }
+}).observe(document.body,{childList:true,subtree:false});
+
 addEventListener('hashchange',()=>queueMicrotask(enhanceRolePresentation));
 addEventListener('load',enhanceRolePresentation);enhanceRolePresentation();
