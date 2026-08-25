@@ -7,6 +7,7 @@ GlobalWorkerOptions.workerSrc=pdfWorkerUrl;
 const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const safeFileName=value=>String(value??'documento').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,' ').trim();
 
 export class DocumentViewerService{
   async open(id){
@@ -16,15 +17,15 @@ export class DocumentViewerService{
     if(!blob)throw new Error('PDF não encontrado no armazenamento local. Importe o pacote documental correspondente.');
     const bytes=new Uint8Array(await blob.arrayBuffer());
     const pdf=await getDocument({data:bytes}).promise;
-    let pageNumber=1,scale=1.2,renderTask=null,closed=false,controlsTimer=null;
+    let pageNumber=1,scale=1.2,renderTask=null,closed=false,controlsTimer=null,fitMode=true,resizeTimer=null;
     const pointers=new Map();
     let dragStart=null,pinchStart=null,tapCandidate=null;
     const backdrop=document.createElement('div');
     backdrop.className='modal-backdrop local-pdf-backdrop';
     backdrop.innerHTML=`<section class="modal local-pdf-viewer" role="dialog" aria-modal="true" aria-label="Documento ${esc(doc.code)}">
-      <header class="modal-head local-pdf-head"><div class="modal-head-copy"><strong>${esc(doc.code)} · ${esc(doc.title)}</strong><small>${esc(doc.system_name||'')} ${doc.discipline?'· '+esc(doc.discipline):''} · Rev. ${esc(doc.revision)}</small></div><div class="local-pdf-head-actions"><button class="btn btn-outline" data-pdf-fullscreen type="button">Tela cheia</button><button class="btn btn-outline" data-pdf-close type="button">Fechar</button></div></header>
-      <div class="local-pdf-toolbar" data-pdf-controls><button class="btn btn-outline" data-pdf-prev type="button">← Anterior</button><span>Página <strong data-pdf-page>1</strong> de <strong>${pdf.numPages}</strong></span><button class="btn btn-outline" data-pdf-next type="button">Próxima →</button><button class="btn btn-outline" data-pdf-fit type="button">Ajustar</button><button class="btn btn-outline" data-pdf-out type="button">−</button><span data-pdf-zoom>120%</span><button class="btn btn-outline" data-pdf-in type="button">+</button></div>
-      <div class="local-pdf-stage" data-pdf-stage><canvas data-pdf-canvas></canvas></div>
+      <header class="modal-head local-pdf-head"><div class="modal-head-copy"><strong>${esc(doc.code)} · ${esc(doc.title)}</strong><small>${esc(doc.system_name||'')} ${doc.discipline?'· '+esc(doc.discipline):''} · Rev. ${esc(doc.revision)}</small></div><div class="local-pdf-head-actions"><button class="btn btn-outline" data-pdf-download type="button">Baixar PDF</button><button class="btn btn-outline" data-pdf-fullscreen type="button">Tela cheia</button><button class="btn btn-outline" data-pdf-close type="button">Fechar</button></div></header>
+      <div class="local-pdf-toolbar" data-pdf-controls><button class="btn btn-outline" data-pdf-prev type="button" aria-label="Página anterior">← Anterior</button><span>Página <strong data-pdf-page>1</strong> de <strong>${pdf.numPages}</strong></span><button class="btn btn-outline" data-pdf-next type="button" aria-label="Próxima página">Próxima →</button><button class="btn btn-outline" data-pdf-fit type="button">Ajustar</button><button class="btn btn-outline" data-pdf-out type="button" aria-label="Diminuir zoom">−</button><span data-pdf-zoom aria-live="polite">120%</span><button class="btn btn-outline" data-pdf-in type="button" aria-label="Aumentar zoom">+</button></div>
+      <div class="local-pdf-stage" data-pdf-stage tabindex="0" aria-label="Página do PDF. Arraste para mover e use pinça ou controles para ampliar."><canvas data-pdf-canvas></canvas></div>
     </section>`;
     const viewer=backdrop.querySelector('.local-pdf-viewer');
     const head=backdrop.querySelector('.local-pdf-head');
@@ -51,6 +52,7 @@ export class DocumentViewerService{
 
     const render=async({preserveCenter=false}={})=>{
       if(closed)return;
+      viewer.setAttribute('aria-busy','true');
       const previousCenter=preserveCenter?{x:(stage.scrollLeft+stage.clientWidth/2)/Math.max(.01,canvas.width||1),y:(stage.scrollTop+stage.clientHeight/2)/Math.max(.01,canvas.height||1)}:null;
       if(renderTask)try{renderTask.cancel()}catch{}
       canvas.style.transform='';
@@ -61,7 +63,7 @@ export class DocumentViewerService{
       backdrop.querySelector('[data-pdf-prev]').disabled=pageNumber<=1;
       backdrop.querySelector('[data-pdf-next]').disabled=pageNumber>=pdf.numPages;
       renderTask=page.render({canvasContext:ctx,viewport});
-      try{await renderTask.promise}catch(error){if(error?.name!=='RenderingCancelledException')throw error}finally{renderTask=null}
+      try{await renderTask.promise}catch(error){if(error?.name!=='RenderingCancelledException')throw error}finally{renderTask=null;viewer.setAttribute('aria-busy','false')}
       if(previousCenter){
         stage.scrollLeft=Math.max(0,previousCenter.x*canvas.width-stage.clientWidth/2);
         stage.scrollTop=Math.max(0,previousCenter.y*canvas.height-stage.clientHeight/2);
@@ -71,27 +73,46 @@ export class DocumentViewerService{
     const fit=async()=>{
       if(closed)return;
       const page=await pdf.getPage(pageNumber),base=page.getViewport({scale:1});
-      const availableWidth=Math.max(320,stage.clientWidth-24);
-      const availableHeight=Math.max(240,stage.clientHeight-24);
+      const availableWidth=Math.max(240,stage.clientWidth-24);
+      const availableHeight=Math.max(200,stage.clientHeight-24);
       scale=clamp(Math.min(availableWidth/base.width,availableHeight/base.height),.25,4);
+      fitMode=true;
       await render();
       stage.scrollLeft=0;stage.scrollTop=0;
     };
-    const zoomTo=async(nextScale,{showUi=true}={})=>{scale=clamp(nextScale,.25,4);await render({preserveCenter:true});if(showUi)showControls()};
+    const zoomTo=async(nextScale,{showUi=true}={})=>{fitMode=false;scale=clamp(nextScale,.25,4);await render({preserveCenter:true});if(showUi)showControls()};
+    const goToPage=async(next)=>{const target=clamp(next,1,pdf.numPages);if(target===pageNumber)return;pageNumber=target;if(fitMode)await fit();else await render();showControls()};
+    const download=()=>{
+      const url=URL.createObjectURL(blob);
+      const anchor=document.createElement('a');
+      anchor.href=url;anchor.download=`${safeFileName(doc.code)}-Rev-${safeFileName(doc.revision)}.pdf`;anchor.rel='noopener';
+      document.body.append(anchor);anchor.click();anchor.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+    };
     const close=()=>{
       if(closed)return;
       closed=true;
-      clearTimeout(controlsTimer);
+      clearTimeout(controlsTimer);clearTimeout(resizeTimer);
       if(renderTask)try{renderTask.cancel()}catch{}
       backdrop.remove();
       if(document.fullscreenElement===viewer)document.exitFullscreen?.().catch(()=>{});
       pdf.destroy().catch?.(()=>{});
       document.removeEventListener('keydown',onKeyDown);
       document.removeEventListener('fullscreenchange',onFullscreenChange);
-      window.removeEventListener('resize',positionToolbar);
+      window.removeEventListener('resize',onResize);
     };
-    const onKeyDown=event=>{if(event.key==='Escape'&&!document.fullscreenElement){event.preventDefault();close()}};
-    const onFullscreenChange=()=>{showControls();setTimeout(positionToolbar,50)};
+    const onKeyDown=event=>{
+      if(event.target?.matches?.('input,select,textarea'))return;
+      if(event.key==='Escape'&&!document.fullscreenElement){event.preventDefault();close();return}
+      if(event.key==='ArrowLeft'||event.key==='PageUp'){event.preventDefault();goToPage(pageNumber-1);return}
+      if(event.key==='ArrowRight'||event.key==='PageDown'){event.preventDefault();goToPage(pageNumber+1);return}
+      if(event.key==='Home'){event.preventDefault();goToPage(1);return}
+      if(event.key==='End'){event.preventDefault();goToPage(pdf.numPages);return}
+      if(event.key==='0'){event.preventDefault();fit();showControls();return}
+      if(event.key==='+'||event.key==='='){event.preventDefault();zoomTo(scale+.2);return}
+      if(event.key==='-'){event.preventDefault();zoomTo(scale-.2)}
+    };
+    const onFullscreenChange=()=>{showControls();setTimeout(()=>{positionToolbar();if(fitMode)fit()},50)};
+    const onResize=()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(()=>{positionToolbar();if(fitMode)fit()},120)};
 
     const beginPointer=event=>{
       if(event.button!==undefined&&event.button!==0)return;
@@ -165,8 +186,9 @@ export class DocumentViewerService{
     toolbar.addEventListener('focusin',showControls);
 
     backdrop.querySelector('[data-pdf-close]').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();close()});
-    backdrop.querySelector('[data-pdf-prev]').onclick=async()=>{if(pageNumber>1){pageNumber--;await render();showControls()}};
-    backdrop.querySelector('[data-pdf-next]').onclick=async()=>{if(pageNumber<pdf.numPages){pageNumber++;await render();showControls()}};
+    backdrop.querySelector('[data-pdf-download]').addEventListener('click',event=>{event.preventDefault();download();showControls()});
+    backdrop.querySelector('[data-pdf-prev]').onclick=()=>goToPage(pageNumber-1);
+    backdrop.querySelector('[data-pdf-next]').onclick=()=>goToPage(pageNumber+1);
     backdrop.querySelector('[data-pdf-fit]').onclick=async()=>{await fit();showControls()};
     backdrop.querySelector('[data-pdf-in]').onclick=()=>zoomTo(scale+.2);
     backdrop.querySelector('[data-pdf-out]').onclick=()=>zoomTo(scale-.2);
@@ -181,11 +203,12 @@ export class DocumentViewerService{
     backdrop.addEventListener('click',event=>{if(event.target===backdrop)close()});
     document.addEventListener('keydown',onKeyDown);
     document.addEventListener('fullscreenchange',onFullscreenChange);
-    window.addEventListener('resize',positionToolbar);
+    window.addEventListener('resize',onResize);
     document.body.append(backdrop);
     await new Promise(resolve=>requestAnimationFrame(resolve));
     await fit();
     showControls();
+    stage.focus({preventScroll:true});
   }
 }
 
