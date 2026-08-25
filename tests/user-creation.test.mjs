@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { normalizeNewUserInput } from '../js/api.js';
+import { normalizeNewUserInput } from '../js/users/user-validation.js';
 
 const valid=normalizeNewUserInput({
   display_name:'  Teste Controller  ',
@@ -18,14 +18,15 @@ assert.throws(()=>normalizeNewUserInput({display_name:'',email:'a@b.com',role:'U
 assert.throws(()=>normalizeNewUserInput({display_name:'Teste',email:'invalido',role:'USER'}),/E-mail inválido/);
 assert.throws(()=>normalizeNewUserInput({display_name:'Teste',email:'a@b.com',role:'ROOT'}),/Perfil de usuário inválido/);
 
-const [api,ux,edge,policy]=await Promise.all([
+const [api,validation,ux,edge,policy]=await Promise.all([
   readFile(new URL('../js/api.js',import.meta.url),'utf8'),
+  readFile(new URL('../js/users/user-validation.js',import.meta.url),'utf8'),
   readFile(new URL('../js/ux-adjustments.js',import.meta.url),'utf8'),
   readFile(new URL('../supabase/functions/create-user/index.ts',import.meta.url),'utf8'),
   readFile(new URL('../docs/verification-policy.md',import.meta.url),'utf8')
 ]);
 assert.match(api,/functions\.invoke\('create-user'/,'frontend deve invocar a Edge Function segura');
-assert.match(api,/\['ADMIN','CONTROLLER','USER'\]\.includes\(role\)/,'frontend deve aceitar os três perfis');
+assert.match(validation,/\['ADMIN','CONTROLLER','USER'\]\.includes\(role\)/,'validação deve aceitar os três perfis');
 assert.match(ux,/await createUserInvite\(/,'modal deve executar a criação real');
 assert.doesNotMatch(ux,/Esta prévia não cria usuários no Auth/,'mensagem de prévia não pode permanecer no fluxo ativo');
 assert.match(ux,/button\.disabled = true/,'envio deve bloquear duplo clique durante criação');
