@@ -1,77 +1,15 @@
 import { getClient } from '../client.js';
-import { isInviteCallback, validateActivationPassword } from './invite-onboarding-logic.js';
+import {
+  authCallbackType,
+  isInviteCallback,
+  isRecoveryCallback,
+  validateActivationPassword
+} from './invite-onboarding-logic.js';
 
-const INVITE_KEY = 'byd-skyrail:invite-activation-pending';
+export { authCallbackType, isInviteCallback, isRecoveryCallback, validateActivationPassword };
 
-export { isInviteCallback, validateActivationPassword };
-
-function rememberInvite() {
-  if (isInviteCallback()) sessionStorage.setItem(INVITE_KEY, '1');
-}
-
-function hasPendingInvite() {
-  return sessionStorage.getItem(INVITE_KEY) === '1';
-}
-
-function clearInviteState() {
-  sessionStorage.removeItem(INVITE_KEY);
-  const cleanUrl = `${location.pathname}${location.search}`;
-  history.replaceState(null, '', cleanUrl || '/');
-}
-
-function renderActivation(session, client) {
-  let root = document.querySelector('#invite-activation-root');
-  if (!root) {
-    root = document.createElement('div');
-    root.id = 'invite-activation-root';
-    document.body.append(root);
-  }
-  root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#f4f7fb;overflow:auto';
-  const email = session?.user?.email || '';
-  root.innerHTML = `<main class="login-shell" style="min-height:100vh">
-    <section class="login-visual" aria-hidden="true">
-      <div class="login-visual-copy">
-        <div class="login-gold-line"></div>
-        <h2>Ative seu acesso<br>ao BYD Skyrail.</h2>
-        <p>Defina sua senha para concluir o primeiro acesso ao sistema.</p>
-      </div>
-    </section>
-    <section class="login-panel">
-      <div class="login-card">
-        <h1>Ativar acesso</h1>
-        <p>${email ? `Conta: <strong>${escapeHtml(email)}</strong>` : 'Defina uma senha para concluir seu cadastro.'}</p>
-        <div id="invite-error" class="login-error" role="alert" hidden></div>
-        <form id="invite-activation-form" class="login-form">
-          <label class="field"><span>Nova senha</span><input type="password" name="password" autocomplete="new-password" minlength="8" required></label>
-          <label class="field"><span>Confirmar senha</span><input type="password" name="confirm" autocomplete="new-password" minlength="8" required></label>
-          <button class="btn btn-primary" type="submit">Ativar acesso</button>
-        </form>
-      </div>
-    </section>
-  </main>`;
-
-  const form = root.querySelector('#invite-activation-form');
-  const errorBox = root.querySelector('#invite-error');
-  form.onsubmit = async event => {
-    event.preventDefault();
-    const button = form.querySelector('button[type="submit"]');
-    button.disabled = true;
-    button.textContent = 'Ativando…';
-    errorBox.hidden = true;
-    try {
-      const data = new FormData(form);
-      const password = validateActivationPassword(data.get('password'), data.get('confirm'));
-      const { error } = await client.auth.updateUser({ password });
-      if (error) throw new Error(error.message || 'Não foi possível definir a senha.');
-      clearInviteState();
-      location.reload();
-    } catch (error) {
-      errorBox.textContent = error?.message || 'Não foi possível concluir a ativação.';
-      errorBox.hidden = false;
-      button.disabled = false;
-      button.textContent = 'Ativar acesso';
-    }
-  };
+function clearAuthState() {
+  history.replaceState(null, '', location.pathname || '/');
 }
 
 function escapeHtml(value) {
@@ -93,28 +31,104 @@ async function waitForSession(client, timeoutMs = 5000) {
   return null;
 }
 
-export async function bootstrapInviteOnboarding() {
-  rememberInvite();
-  if (!hasPendingInvite()) return false;
-  const client = getClient();
-  try {
-    const session = await waitForSession(client);
-    if (!session) throw new Error('O convite não pôde ser validado. Solicite um novo convite ao administrador.');
-    renderActivation(session, client);
-    return true;
-  } catch (error) {
-    let root = document.querySelector('#invite-activation-root');
-    if (!root) {
-      root = document.createElement('div');
-      root.id = 'invite-activation-root';
-      document.body.append(root);
-    }
-    root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#f4f7fb;padding:32px;overflow:auto';
-    root.innerHTML = `<div class="login-card" style="max-width:560px;margin:8vh auto"><h1>Não foi possível ativar o acesso</h1><div class="login-error" role="alert">${escapeHtml(error?.message || 'Convite inválido ou expirado.')}</div></div>`;
-    return true;
-  }
+async function currentSession(client, callbackType) {
+  if (callbackType) return waitForSession(client);
+  const { data, error } = await client.auth.getSession();
+  if (error) throw error;
+  return data?.session || null;
 }
 
-if (typeof document !== 'undefined' && typeof sessionStorage !== 'undefined') {
-  bootstrapInviteOnboarding();
+async function memberActivation(client, userId) {
+  const { data, error } = await client
+    .from('members')
+    .select('user_id,active,activated_at')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+function renderPasswordScreen(session, client, { recovery = false, pendingActivation = false } = {}) {
+  let root = document.querySelector('#invite-activation-root');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'invite-activation-root';
+    document.body.append(root);
+  }
+  root.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#f4f7fb;overflow:auto';
+
+  const email = session?.user?.email || '';
+  const firstAccess = pendingActivation;
+  const title = firstAccess ? 'Ativar acesso' : 'Definir nova senha';
+  const heroTitle = firstAccess ? 'Ative seu acesso<br>ao BYD Skyrail.' : 'Recupere seu acesso<br>ao BYD Skyrail.';
+  const description = firstAccess
+    ? 'Defina sua senha para concluir o primeiro acesso ao sistema.'
+    : 'Defina uma nova senha para voltar a acessar o sistema.';
+  const submitLabel = firstAccess ? 'Ativar acesso' : 'Salvar nova senha';
+
+  root.innerHTML = `<main class="login-shell" style="min-height:100vh">
+    <section class="login-visual" aria-hidden="true">
+      <div class="login-visual-copy">
+        <div class="login-gold-line"></div>
+        <h2>${heroTitle}</h2>
+        <p>${description}</p>
+      </div>
+    </section>
+    <section class="login-panel">
+      <div class="login-card">
+        <h1>${title}</h1>
+        <p>${email ? `Conta: <strong>${escapeHtml(email)}</strong>` : 'Defina uma senha para continuar.'}</p>
+        <div id="invite-error" class="login-error" role="alert" hidden></div>
+        <form id="invite-activation-form" class="login-form">
+          <label class="field"><span>Nova senha</span><input type="password" name="password" autocomplete="new-password" minlength="8" maxlength="128" required></label>
+          <label class="field"><span>Confirmar senha</span><input type="password" name="confirm" autocomplete="new-password" minlength="8" maxlength="128" required></label>
+          <button class="btn btn-primary" type="submit">${submitLabel}</button>
+        </form>
+      </div>
+    </section>
+  </main>`;
+
+  const form = root.querySelector('#invite-activation-form');
+  const errorBox = root.querySelector('#invite-error');
+  form.onsubmit = async event => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    button.textContent = firstAccess ? 'Ativando…' : 'Salvando…';
+    errorBox.hidden = true;
+    try {
+      const data = new FormData(form);
+      const password = validateActivationPassword(data.get('password'), data.get('confirm'));
+      const { data: result, error } = await client.functions.invoke('set-password', { body: { password } });
+      if (result?.error) throw new Error(result.error);
+      if (error || !result?.activated_at) throw new Error('Não foi possível definir a senha.');
+      clearAuthState();
+      location.reload();
+    } catch (error) {
+      errorBox.textContent = error?.message || 'Não foi possível concluir a operação.';
+      errorBox.hidden = false;
+      button.disabled = false;
+      button.textContent = submitLabel;
+    }
+  };
+}
+
+export async function bootstrapInviteOnboarding() {
+  const client = getClient();
+  const callbackType = authCallbackType();
+  const session = await currentSession(client, callbackType);
+  if (!session?.user) return false;
+
+  const member = await memberActivation(client, session.user.id);
+  if (!member?.active) return false;
+
+  const pendingActivation = !member.activated_at;
+  const recovery = callbackType === 'recovery';
+  if (!pendingActivation && !recovery) {
+    if (callbackType === 'invite') clearAuthState();
+    return false;
+  }
+
+  renderPasswordScreen(session, client, { recovery, pendingActivation });
+  return true;
 }
