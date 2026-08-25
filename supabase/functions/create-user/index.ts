@@ -14,9 +14,14 @@ const corsHeaders = {
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders });
 
-function inviteRedirect(req: Request) {
-  const origin = String(req.headers.get("Origin") || "").trim().replace(/\/$/, "");
-  return TRUSTED_REDIRECTS.has(origin) ? origin : PRODUCTION_URL;
+function trustedRedirect(value: unknown, fallback = PRODUCTION_URL) {
+  const candidate = String(value || "").trim().replace(/\/$/, "");
+  return TRUSTED_REDIRECTS.has(candidate) ? candidate : fallback;
+}
+
+function inviteRedirect(req: Request, requested?: unknown) {
+  const origin = trustedRedirect(req.headers.get("Origin"), PRODUCTION_URL);
+  return trustedRedirect(requested, origin);
 }
 
 Deno.serve(async (req: Request) => {
@@ -50,7 +55,7 @@ Deno.serve(async (req: Request) => {
     return json(403, { error: "Apenas administradores ativos podem criar usuários." });
   }
 
-  let payload: { display_name?: string; email?: string; role?: string; active?: boolean };
+  let payload: { display_name?: string; email?: string; role?: string; active?: boolean; redirect_to?: string };
   try {
     payload = await req.json();
   } catch {
@@ -66,7 +71,7 @@ Deno.serve(async (req: Request) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json(400, { error: "E-mail inválido." });
   if (!["ADMIN", "CONTROLLER", "USER"].includes(role)) return json(400, { error: "Perfil inválido." });
 
-  const redirectTo = inviteRedirect(req);
+  const redirectTo = inviteRedirect(req, payload.redirect_to);
   const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
     data: { display_name: displayName },
     redirectTo
