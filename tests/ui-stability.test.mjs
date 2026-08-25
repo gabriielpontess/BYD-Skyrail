@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const [notifications,role,systems,sync,db,catalog,polish,interaction,index,sw]=await Promise.all([
+const [notifications,role,systems,localUx,sync,db,catalog,polish,interaction,index,sw]=await Promise.all([
   readFile(new URL('../js/notifications-ux.js',import.meta.url),'utf8'),
   readFile(new URL('../js/role-ux.js',import.meta.url),'utf8'),
   readFile(new URL('../js/systems-ux.js',import.meta.url),'utf8'),
+  readFile(new URL('../js/local-documents-ux.js',import.meta.url),'utf8'),
   readFile(new URL('../js/sync.js',import.meta.url),'utf8'),
   readFile(new URL('../js/db.js',import.meta.url),'utf8'),
   readFile(new URL('../js/documents/catalog-repository.js',import.meta.url),'utf8'),
@@ -22,6 +23,10 @@ assert.match(notifications,/documentViewerService\.open/,'notificação de docum
 
 assert.match(role,/classList\.toggle\('active',active\)/,'estado ativo do Controller deve ser reversível');
 assert.doesNotMatch(systems,/\.doc-table tbody tr|canonical-system-filter/,'camada Sistemas não deve reprocessar a página Documentos local-first');
+assert.match(localUx,/const PAGE_SIZE=100/,'lista grande deve ser paginada para limitar DOM');
+assert.match(localUx,/visible\.slice\(localState\.page\*PAGE_SIZE/,'somente a página visível deve ser renderizada');
+assert.match(localUx,/compact\?mobileRows\(pageDocs,systemMap\):desktopRows\(pageDocs,systemMap\)/,'desktop e mobile não devem ser renderizados em duplicidade');
+assert.match(localUx,/requestAnimationFrame\(renderProgress\)/,'progresso de importação deve limitar writes ao frame visual');
 assert.doesNotMatch(sync,/docs\.forEach/,'sincronização local não deve provocar atualização visual por documento');
 assert.doesNotMatch(db,/documentFileService\.has\(/,'listas não devem executar stat/IndexedDB por documento');
 assert.match(catalog,/this\.byId = new Map/,'catálogo deve manter índice O(1) por id');
