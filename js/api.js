@@ -17,7 +17,7 @@ export async function signOut(){await getClient().auth.signOut({scope:'local'})}
 export async function updateOwnProfile(input){const display_name=v(input?.display_name),cargo=v(input?.cargo),telefone=v(input?.telefone);if(!display_name)throw new Error('Nome obrigatório.');const{error}=await getClient().auth.updateUser({data:{display_name,cargo,telefone}});if(error)throw new Error('Não foi possível atualizar o perfil.');return currentMember()}
 export async function changeOwnPassword(password){const next=String(password??'');if(next.length<8)throw new Error('A nova senha deve ter pelo menos 8 caracteres.');const{error}=await getClient().auth.updateUser({password:next});if(error)throw new Error('Não foi possível alterar a senha.')}
 
-export async function createUserInvite(input){
+export function normalizeNewUserInput(input){
   const display_name=v(input?.display_name);
   const email=v(input?.email).toLowerCase();
   const role=v(input?.role||'USER').toUpperCase();
@@ -25,7 +25,12 @@ export async function createUserInvite(input){
   if(!display_name)throw new Error('Nome obrigatório.');
   if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('E-mail inválido.');
   if(!['ADMIN','CONTROLLER','USER'].includes(role))throw new Error('Perfil de usuário inválido.');
-  const {data,error}=await getClient().functions.invoke('create-user',{body:{display_name,email,role,active}});
+  return{display_name,email,role,active};
+}
+
+export async function createUserInvite(input){
+  const payload=normalizeNewUserInput(input);
+  const {data,error}=await getClient().functions.invoke('create-user',{body:payload});
   if(data?.error)throw new Error(data.error);
   if(error||!data?.user)throw new Error('Não foi possível criar o usuário.');
   return data.user;
