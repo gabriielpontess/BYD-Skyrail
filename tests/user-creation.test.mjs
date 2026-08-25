@@ -19,9 +19,10 @@ assert.throws(()=>normalizeNewUserInput({display_name:'',email:'a@b.com',role:'U
 assert.throws(()=>normalizeNewUserInput({display_name:'Teste',email:'invalido',role:'USER'}),/E-mail inválido/);
 assert.throws(()=>normalizeNewUserInput({display_name:'Teste',email:'a@b.com',role:'ROOT'}),/Perfil de usuário inválido/);
 
-assert.equal(inviteRedirectForLocation({origin:'https://deploy-preview-8--byd-skyrail.netlify.app'}),'https://deploy-preview-8--byd-skyrail.netlify.app');
-assert.equal(inviteRedirectForLocation({origin:'https://byd-skyrail.netlify.app'}),'https://byd-skyrail.netlify.app');
-assert.equal(inviteRedirectForLocation({origin:'http://localhost:3000'}),'https://byd-skyrail.netlify.app');
+assert.equal(inviteRedirectForLocation({origin:'https://deploy-preview-8--byd-skyrail.netlify.app'}),'https://deploy-preview-8--byd-skyrail.netlify.app/');
+assert.equal(inviteRedirectForLocation({origin:'https://deploy-preview-8--byd-skyrail.netlify.app/'}),'https://deploy-preview-8--byd-skyrail.netlify.app/');
+assert.equal(inviteRedirectForLocation({origin:'https://byd-skyrail.netlify.app'}),'https://byd-skyrail.netlify.app/');
+assert.equal(inviteRedirectForLocation({origin:'http://localhost:3000'}),'https://byd-skyrail.netlify.app/');
 
 const calls=[];
 const fakeClient={functions:{invoke:async(name,options)=>{
@@ -41,7 +42,7 @@ assert.deepEqual(calls[0].options.body,{
   email:'teste@byd.com',
   role:'CONTROLLER',
   active:true,
-  redirect_to:'https://deploy-preview-8--byd-skyrail.netlify.app'
+  redirect_to:'https://deploy-preview-8--byd-skyrail.netlify.app/'
 });
 
 const duplicateClient={functions:{invoke:async()=>({data:{error:'Já existe um usuário com este e-mail.'},error:null})}};
@@ -58,6 +59,7 @@ const [api,validation,provisioning,ux,edge,policy]=await Promise.all([
 assert.match(api,/createUserWithClient\(getClient\(\),input\)/,'API pública deve usar o serviço testado');
 assert.match(provisioning,/functions\.invoke\('create-user'/,'serviço deve invocar a Edge Function segura');
 assert.match(provisioning,/redirect_to: inviteRedirectForLocation/,'frontend deve enviar o destino explícito por ambiente');
+assert.match(provisioning,/return `\$\{TRUSTED_APP_ORIGINS\.has\(value\) \? value : PRODUCTION_ORIGIN\}\/`/,'frontend deve canonicalizar redirect com barra final para casar com /**');
 assert.match(validation,/\['ADMIN','CONTROLLER','USER'\]\.includes\(role\)/,'validação deve aceitar os três perfis');
 assert.match(ux,/await createUserInvite\(/,'modal deve executar a criação real');
 assert.doesNotMatch(ux,/Esta prévia não cria usuários no Auth/,'mensagem de prévia não pode permanecer no fluxo ativo');
@@ -67,7 +69,8 @@ assert.match(edge,/\[\"ADMIN\", \"CONTROLLER\", \"USER\"\]\.includes\(role\)/,'E
 assert.match(edge,/inviteUserByEmail/,'Edge Function deve criar convite via Auth admin');
 assert.match(edge,/deleteUser\(userId\)/,'falha ao criar member deve reverter usuário Auth');
 assert.match(edge,/payload\.redirect_to/,'Edge Function deve considerar o redirect solicitado pelo frontend');
-assert.match(edge,/TRUSTED_REDIRECTS\.has\(candidate\)/,'redirect solicitado deve passar por allowlist explícita');
+assert.match(edge,/TRUSTED_ORIGINS\.has\(candidate\)/,'redirect solicitado deve passar por allowlist explícita');
+assert.match(edge,/effective_redirect/,'Edge Function deve registrar o redirect efetivo para diagnóstico real');
 assert.doesNotMatch(edge,/http:\/\/localhost:3000/,'Edge Function de produção não deve apontar convites para localhost');
 assert.match(policy,/Nenhuma funcionalidade, correção ou item de checklist pode ser marcado/,'regra de verificação deve permanecer documentada');
 console.log('user-creation.test.mjs: ok');
