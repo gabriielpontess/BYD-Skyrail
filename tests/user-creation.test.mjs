@@ -77,6 +77,6 @@ assert.match(edge,/effective_redirect/,'Edge Function deve registrar o redirect 
 assert.doesNotMatch(edge,/http:\/\/localhost:3000/,'Edge Function de produção não deve apontar convites para localhost');
 assert.match(setPassword,/auth\.admin\.updateUserById\(user\.id, \{ password \}\)/,'definição de senha deve ocorrer no servidor autenticado');
 assert.match(setPassword,/activated_at: activatedAt/,'ativação deve ser persistida somente após a senha ser atualizada');
-assert.doesNotMatch(setPassword,/password.*console\.log/s,'senha nunca deve ser registrada em log');
+assert.doesNotMatch(setPassword,/console\.log\([^)]*password/i,'senha nunca deve ser registrada em log');
 assert.match(policy,/Nenhuma funcionalidade, correção ou item de checklist pode ser marcado/,'regra de verificação deve permanecer documentada');
 console.log('user-creation.test.mjs: ok');
