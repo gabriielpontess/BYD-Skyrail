@@ -51,5 +51,9 @@ assert.match(edge,/callerMember\.role !== \"ADMIN\"/,'Edge Function deve restrin
 assert.match(edge,/\[\"ADMIN\", \"CONTROLLER\", \"USER\"\]\.includes\(role\)/,'Edge Function deve aceitar CONTROLLER');
 assert.match(edge,/inviteUserByEmail/,'Edge Function deve criar convite via Auth admin');
 assert.match(edge,/deleteUser\(userId\)/,'falha ao criar member deve reverter usuário Auth');
+assert.match(edge,/https:\/\/byd-skyrail\.netlify\.app/,'produção deve ser um destino explícito de convite');
+assert.match(edge,/https:\/\/deploy-preview-8--byd-skyrail\.netlify\.app/,'preview #8 deve ser um destino explícito de convite');
+assert.match(edge,/TRUSTED_REDIRECTS\.has\(origin\)/,'origem do convite deve passar por allowlist explícita');
+assert.doesNotMatch(edge,/http:\/\/localhost:3000/,'Edge Function de produção não deve apontar convites para localhost');
 assert.match(policy,/Nenhuma funcionalidade, correção ou item de checklist pode ser marcado/,'regra de verificação deve permanecer documentada');
 console.log('user-creation.test.mjs: ok');
