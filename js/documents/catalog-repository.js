@@ -2,6 +2,7 @@ import bundledCatalog from '../../documents.json';
 import { Capacitor } from '@capacitor/core';
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem';
 import { normalizeDocument, sortDocuments } from '../model.js';
+import { effectiveDocumentType } from './document-types.js';
 
 const WEB_KEY = 'byd-skyrail:local-catalog-v1';
 const NATIVE_PATH = 'skyrail/catalog/documents.json';
@@ -18,7 +19,7 @@ function normalizeCatalog(input) {
   const documents = input.documents.map(item => normalizeDocument({
     ...item,
     description: text(item.description),
-    document_type: text(item.document_type ?? item.documentType),
+    document_type: effectiveDocumentType(item),
     system_id: text(item.system_id ?? item.systemId),
     approval_status: text(item.approval_status ?? item.source_status),
     source_status: text(item.source_status ?? item.approval_status),
