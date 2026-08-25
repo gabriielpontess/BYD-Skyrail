@@ -1,3 +1,5 @@
+import { createUserInvite } from './api.js';
+
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 let scheduled = false;
@@ -147,7 +149,7 @@ function openAddUserPreview() {
         <label class="field wide"><span>E-mail</span><input name="email" type="email" required placeholder="usuario@empresa.com"></label>
         <label class="field"><span>Perfil</span><select name="role"><option value="USER">USER</option><option value="CONTROLLER">CONTROLLER</option><option value="ADMIN">ADMIN</option></select></label>
         <label class="field"><span>Acesso inicial</span><select name="active"><option value="false">Inativo</option><option value="true">Ativo</option></select></label>
-        <div class="wide ux-add-user-note">A interface está preparada para os perfis ADMIN, CONTROLLER e USER. A criação segura no Supabase Auth permanece no fluxo específico de provisionamento.</div>
+        <div class="wide ux-add-user-note" aria-live="polite">Ao confirmar, o usuário receberá um convite seguro por e-mail para definir o acesso.</div>
         <div class="wide" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">Adicionar usuário</button></div>
       </form>
     </div>
@@ -155,10 +157,39 @@ function openAddUserPreview() {
 
   const close = () => backdrop.remove();
   $('[data-ux-close]', backdrop).onclick = close;
-  $('[data-ux-user-form]', backdrop).onsubmit = event => {
+  $('[data-ux-user-form]', backdrop).onsubmit = async event => {
     event.preventDefault();
+    const form = event.currentTarget;
     const note = $('.ux-add-user-note', backdrop);
-    note.textContent = 'Esta prévia não cria usuários no Auth. Use o fluxo administrativo seguro de provisionamento.';
+    const button = form.querySelector('button[type="submit"]');
+    const data = new FormData(form);
+    button.disabled = true;
+    button.classList.add('is-loading');
+    button.textContent = 'Criando usuário';
+    note.classList.remove('error','success');
+    note.textContent = 'Criando conta e perfil de acesso…';
+    try {
+      const user = await createUserInvite({
+        display_name: data.get('name'),
+        email: data.get('email'),
+        role: data.get('role'),
+        active: data.get('active') === 'true'
+      });
+      note.textContent = `Usuário ${user.display_name || data.get('name')} criado. Convite enviado para ${data.get('email')}.`;
+      note.classList.add('success');
+      form.reset();
+      setTimeout(() => {
+        close();
+        document.querySelector('[data-refresh]')?.click();
+      }, 700);
+    } catch (error) {
+      note.textContent = error?.message || 'Não foi possível criar o usuário.';
+      note.classList.add('error');
+    } finally {
+      button.disabled = false;
+      button.classList.remove('is-loading');
+      button.textContent = 'Adicionar usuário';
+    }
   };
   backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
   document.body.append(backdrop);
@@ -171,7 +202,7 @@ function enhanceAdminProfile() {
 
   const section = document.createElement('section');
   section.className = 'profile-section ux-admin-users-entry';
-  section.innerHTML = `<div class="profile-section-head"><div><h2>Usuários e perfis</h2><p>Prepare novos acessos e escolha entre os perfis ADMIN, CONTROLLER ou USER.</p></div><button class="btn btn-primary" data-ux-add-user type="button">Adicionar usuário</button></div>`;
+  section.innerHTML = `<div class="profile-section-head"><div><h2>Usuários e perfis</h2><p>Crie novos acessos e escolha entre os perfis ADMIN, CONTROLLER ou USER.</p></div><button class="btn btn-primary" data-ux-add-user type="button">Adicionar usuário</button></div>`;
   $('[data-ux-add-user]', section).onclick = openAddUserPreview;
   profileMain.append(section);
 }
