@@ -1,6 +1,7 @@
 import { getClient } from './client.js';
 import { documentRepository } from './documents/catalog-repository.js';
 import { normalizeNewUserInput } from './users/user-validation.js';
+import { createUserWithClient } from './users/user-provisioning.js';
 
 const v=value=>String(value??'').trim();
 
@@ -20,13 +21,7 @@ export async function changeOwnPassword(password){const next=String(password??''
 
 export { normalizeNewUserInput };
 
-export async function createUserInvite(input){
-  const payload=normalizeNewUserInput(input);
-  const {data,error}=await getClient().functions.invoke('create-user',{body:payload});
-  if(data?.error)throw new Error(data.error);
-  if(error||!data?.user)throw new Error('Não foi possível criar o usuário.');
-  return data.user;
-}
+export async function createUserInvite(input){return createUserWithClient(getClient(),input)}
 
 export async function listSystems({includeInactive=false}={}){return documentRepository.getSystems({includeInactive})}
 export async function saveSystem(){throw new Error('Sistemas são administrados pelo catálogo local desta V1. Importe um pacote documental atualizado.')}
