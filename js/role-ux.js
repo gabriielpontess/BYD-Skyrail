@@ -6,6 +6,7 @@ let pendingEditorRole='';
 
 function label(){return role()==='ADMIN'?'Administrador':role()==='CONTROLLER'?'Controller documental':'Usuário';}
 function description(){return role()==='ADMIN'?'Acesso administrativo, documentos, usuários e auditoria.':role()==='CONTROLLER'?'Pode consultar e importar atualizações documentais neste dispositivo.':'Acesso de consulta a documentos, pesquisa, filtros e viewer.';}
+function setText(node,value){if(node&&node.textContent!==value)node.textContent=value;}
 
 function addControllerNav(){
   if(!isController())return;
@@ -22,8 +23,10 @@ function addControllerNav(){
 function renderControllerUpdates(){
   if(!isController()||!location.hash.startsWith('#/controller-updates'))return;
   const page=$('#page');if(!page)return;
-  page.innerHTML=`<div class="page-head"><div><h1>Atualizações documentais</h1><p>Importe o pacote oficial para atualizar o catálogo e os PDFs armazenados neste dispositivo.</p></div><div class="page-actions"></div></div>
-    <section class="panel-card controller-update-card"><h3>Perfil Controller</h3><p>Use esta área somente durante a atualização documental. Após concluir e validar a importação, efetue logoff para liberar o dispositivo ao usuário de campo.</p><div class="controller-update-notice"><strong>Importação local</strong><span>O pacote é validado antes de substituir o catálogo ativo. Os PDFs permanecem no armazenamento local do aplicativo.</span></div></section>`;
+  if(!page.querySelector('.controller-update-card')){
+    page.innerHTML=`<div class="page-head"><div><h1>Atualizações documentais</h1><p>Importe o pacote oficial para atualizar o catálogo e os PDFs armazenados neste dispositivo.</p></div><div class="page-actions"></div></div>
+      <section class="panel-card controller-update-card"><h3>Perfil Controller</h3><p>Use esta área somente durante a atualização documental. Após concluir e validar a importação, efetue logoff para liberar o dispositivo ao usuário de campo.</p><div class="controller-update-notice"><strong>Importação local</strong><span>O pacote é validado antes de substituir o catálogo ativo. Os PDFs permanecem no armazenamento local do aplicativo.</span></div></section>`;
+  }
   document.querySelectorAll('[data-controller-updates]').forEach(button=>button.classList.add('active'));
 }
 
@@ -34,13 +37,13 @@ function enhanceAdminRoleEditor(){
     const option=document.createElement('option');option.value='CONTROLLER';option.textContent='CONTROLLER';
     const userOption=select.querySelector('option[value="USER"]');select.insertBefore(option,userOption||null);
   }
-  if(pendingEditorRole&&['ADMIN','CONTROLLER','USER'].includes(pendingEditorRole))select.value=pendingEditorRole;
+  if(pendingEditorRole&&['ADMIN','CONTROLLER','USER'].includes(pendingEditorRole)&&select.value!==pendingEditorRole)select.value=pendingEditorRole;
 }
 
 function enhanceRolePresentation(){
-  const header=$('#header-user-role');if(header)header.textContent=label();
+  setText($('#header-user-role'),label());
   const card=$('.access-card .access-role');
-  if(card){const strong=card.querySelector('strong'),paragraph=card.querySelector('p');if(strong)strong.textContent=label();if(paragraph)paragraph.textContent=description()}
+  if(card){setText(card.querySelector('strong'),label());setText(card.querySelector('p'),description())}
   if(isController())addControllerNav();
   renderControllerUpdates();
   enhanceAdminRoleEditor();
@@ -51,6 +54,7 @@ document.addEventListener('click',event=>{
   const summary=button.closest('.user-row')?.querySelector('small')?.textContent||'';
   pendingEditorRole=String(summary.split('·')[0]||'').trim().toUpperCase();
 },true);
-new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(document.body,{childList:true,subtree:true});
+const appRoot=document.querySelector('#app');
+if(appRoot)new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(appRoot,{childList:true,subtree:true});
 addEventListener('hashchange',()=>queueMicrotask(enhanceRolePresentation));
 addEventListener('load',enhanceRolePresentation);enhanceRolePresentation();
