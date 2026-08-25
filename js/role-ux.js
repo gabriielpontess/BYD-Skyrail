@@ -7,6 +7,15 @@ let pendingEditorRole='';
 function label(){return role()==='ADMIN'?'Administrador':role()==='CONTROLLER'?'Controller documental':'Usuário';}
 function description(){return role()==='ADMIN'?'Acesso administrativo, documentos, usuários e auditoria.':role()==='CONTROLLER'?'Pode consultar e importar atualizações documentais neste dispositivo.':'Acesso de consulta a documentos, pesquisa, filtros e viewer.';}
 function setText(node,value){if(node&&node.textContent!==value)node.textContent=value;}
+function controllerRouteActive(){return location.hash.startsWith('#/controller-updates');}
+
+function syncControllerNavState(){
+  const active=isController()&&controllerRouteActive();
+  document.querySelectorAll('[data-controller-updates]').forEach(button=>{
+    button.classList.toggle('active',active);
+    if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
+  });
+}
 
 function addControllerNav(){
   if(!isController())return;
@@ -18,16 +27,17 @@ function addControllerNav(){
   if(mobile&&!mobile.querySelector('[data-controller-updates]')){
     const button=document.createElement('button');button.className='mobile-nav-btn';button.type='button';button.dataset.controllerUpdates='';button.innerHTML='<span>Atualizações</span>';button.onclick=()=>{location.hash='#/controller-updates'};mobile.append(button);
   }
+  syncControllerNavState();
 }
 
 function renderControllerUpdates(){
-  if(!isController()||!location.hash.startsWith('#/controller-updates'))return;
+  if(!isController()||!controllerRouteActive()){syncControllerNavState();return;}
   const page=$('#page');if(!page)return;
   if(!page.querySelector('.controller-update-card')){
     page.innerHTML=`<div class="page-head"><div><h1>Atualizações documentais</h1><p>Importe o pacote oficial para atualizar o catálogo e os PDFs armazenados neste dispositivo.</p></div><div class="page-actions"></div></div>
       <section class="panel-card controller-update-card"><h3>Perfil Controller</h3><p>Use esta área somente durante a atualização documental. Após concluir e validar a importação, efetue logoff para liberar o dispositivo ao usuário de campo.</p><div class="controller-update-notice"><strong>Importação local</strong><span>O pacote é validado antes de substituir o catálogo ativo. Os PDFs permanecem no armazenamento local do aplicativo.</span></div></section>`;
   }
-  document.querySelectorAll('[data-controller-updates]').forEach(button=>button.classList.add('active'));
+  syncControllerNavState();
 }
 
 function enhanceAdminRoleEditor(root=document){
@@ -48,6 +58,7 @@ function enhanceRolePresentation(){
   if(card){setText(card.querySelector('strong'),label());setText(card.querySelector('p'),description())}
   if(isController())addControllerNav();
   renderControllerUpdates();
+  syncControllerNavState();
   enhanceAdminRoleEditor();
 }
 
@@ -61,11 +72,6 @@ document.addEventListener('click',event=>{
 
 const appRoot=document.querySelector('#app');
 if(appRoot)new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(appRoot,{childList:true,subtree:true});
-
-// O editor de usuário existente é anexado diretamente ao body pelo app.js.
-// Observamos somente filhos diretos do body: quando um modal é adicionado,
-// enriquecemos seu select uma única vez. Como subtree=false, inserir a option
-// dentro do select não retroalimenta este observer nem cria loop de renderização.
 if(document.body)new MutationObserver(records=>{
   for(const record of records){
     for(const node of record.addedNodes){
@@ -76,4 +82,5 @@ if(document.body)new MutationObserver(records=>{
 }).observe(document.body,{childList:true,subtree:false});
 
 addEventListener('hashchange',()=>queueMicrotask(enhanceRolePresentation));
-addEventListener('load',enhanceRolePresentation);enhanceRolePresentation();
+addEventListener('load',enhanceRolePresentation);
+enhanceRolePresentation();
