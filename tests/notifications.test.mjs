@@ -21,13 +21,18 @@ assert.equal(events.filter(item=>item.type==='DOCUMENT_REMOVED').length,1);
 assert.equal(events.find(item=>item.type==='REVISION_UPDATED').documentId,'a');
 
 const map=new Map();
+let dispatched=0;
 globalThis.localStorage={getItem:key=>map.has(key)?map.get(key):null,setItem:(key,value)=>map.set(key,String(value)),removeItem:key=>map.delete(key)};
+globalThis.dispatchEvent=()=>{dispatched++;return true};
+if(typeof globalThis.CustomEvent==='undefined')globalThis.CustomEvent=class CustomEvent{constructor(type){this.type=type}};
 const service=new NotificationService();
 service.append(events);
 assert.equal(service.list().length,5);
 assert.equal(service.unreadCount('user-1'),5);
+const beforeReadDispatches=dispatched;
 service.markAllRead('user-1');
 assert.equal(service.unreadCount('user-1'),0);
+assert.equal(dispatched,beforeReadDispatches,'marcar como lidas não pode redisparar o evento que renderiza o painel');
 service.append(events);
 assert.equal(service.list().length,5,'IDs de eventos devem impedir notificações duplicadas do mesmo pacote');
 console.log('notifications.test.mjs: ok');
