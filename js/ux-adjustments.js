@@ -145,9 +145,9 @@ function openAddUserPreview() {
       <form class="admin-form" data-ux-user-form>
         <label class="field wide"><span>Nome completo</span><input name="name" required placeholder="Nome do colaborador"></label>
         <label class="field wide"><span>E-mail</span><input name="email" type="email" required placeholder="usuario@empresa.com"></label>
-        <label class="field"><span>Perfil</span><select name="role"><option value="USER">USER</option><option value="ADMIN">ADMIN</option></select></label>
+        <label class="field"><span>Perfil</span><select name="role"><option value="USER">USER</option><option value="CONTROLLER">CONTROLLER</option><option value="ADMIN">ADMIN</option></select></label>
         <label class="field"><span>Acesso inicial</span><select name="active"><option value="false">Inativo</option><option value="true">Ativo</option></select></label>
-        <div class="wide ux-add-user-note">A interface está preparada no PR #3. A criação segura no Supabase Auth está sendo implementada no PR #4.</div>
+        <div class="wide ux-add-user-note">A interface está preparada para os perfis ADMIN, CONTROLLER e USER. A criação segura no Supabase Auth permanece no fluxo específico de provisionamento.</div>
         <div class="wide" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">Adicionar usuário</button></div>
       </form>
     </div>
@@ -158,7 +158,7 @@ function openAddUserPreview() {
   $('[data-ux-user-form]', backdrop).onsubmit = event => {
     event.preventDefault();
     const note = $('.ux-add-user-note', backdrop);
-    note.textContent = 'Fluxo funcional em implementação no PR #4. Nenhum usuário foi criado por esta prévia de UX.';
+    note.textContent = 'Esta prévia não cria usuários no Auth. Use o fluxo administrativo seguro de provisionamento.';
   };
   backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
   document.body.append(backdrop);
@@ -171,7 +171,7 @@ function enhanceAdminProfile() {
 
   const section = document.createElement('section');
   section.className = 'profile-section ux-admin-users-entry';
-  section.innerHTML = `<div class="profile-section-head"><div><h2>Usuários e perfis</h2><p>Prepare novos acessos e escolha entre os perfis ADMIN ou USER.</p></div><button class="btn btn-primary" data-ux-add-user type="button">Adicionar usuário</button></div>`;
+  section.innerHTML = `<div class="profile-section-head"><div><h2>Usuários e perfis</h2><p>Prepare novos acessos e escolha entre os perfis ADMIN, CONTROLLER ou USER.</p></div><button class="btn btn-primary" data-ux-add-user type="button">Adicionar usuário</button></div>`;
   $('[data-ux-add-user]', section).onclick = openAddUserPreview;
   profileMain.append(section);
 }
