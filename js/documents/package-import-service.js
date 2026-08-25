@@ -2,6 +2,7 @@ import { strFromU8, Unzip, UnzipInflate } from 'fflate';
 import { documentRepository } from './catalog-repository.js';
 import { documentFileService } from './file-service.js';
 import { packageStagingService } from './package-staging-service.js';
+import { notificationService } from './notification-service.js';
 
 const MANIFEST='manifest.json';
 const DEFAULT_CATALOG='documents.json';
@@ -78,19 +79,25 @@ export class PackageImportService{
 
   async commit(plan,onProgress){
     const {runId,manifest,rawCatalog}=plan;
+    const previousDocuments=await documentRepository.getAll({includeInactive:true});
     const nextCatalog={...rawCatalog,schemaVersion:Number(rawCatalog.schemaVersion||manifest.schemaVersion||1),catalogVersion:String(rawCatalog.catalogVersion||manifest.packageVersion),generatedAt:rawCatalog.generatedAt||manifest.createdAt||new Date().toISOString(),packageVersion:manifest.packageVersion};
     const docs=nextCatalog.documents.map(doc=>({...doc,file_path:`${manifest.packageVersion}__${doc.file||doc.file_path}`,file:doc.file||doc.file_path,package_version:manifest.packageVersion}));
     nextCatalog.documents=docs;
     try{
       let done=0;
-      for(const doc of docs.filter(item=>String(item.status||'active').toLowerCase()==='active'&&item.active!==false)){
+      const activeDocs=docs.filter(item=>String(item.status||'active').toLowerCase()==='active'&&item.active!==false);
+      for(const doc of activeDocs){
         const source=`documents/${doc.file}`;
         const bytes=await packageStagingService.get(runId,source);
         if(!bytes)throw new Error(`Arquivo ausente durante commit: ${doc.file}`);
         await documentFileService.putBytes(doc,bytes);
-        done++;onProgress?.({phase:'write',done,total:docs.length,code:doc.code});
+        done++;onProgress?.({phase:'write',done,total:activeDocs.length,code:doc.code});
       }
       await documentRepository.replace(nextCatalog);
+      const currentDocuments=await documentRepository.getAll({includeInactive:true});
+      try{
+        notificationService.recordPackage(previousDocuments,currentDocuments,{packageVersion:manifest.packageVersion,createdAt:nextCatalog.generatedAt});
+      }catch(error){console.warn('[BYD Skyrail] Não foi possível registrar notificações locais:',error)}
       await packageStagingService.clear(runId);
       return await documentRepository.info();
     }catch(error){
