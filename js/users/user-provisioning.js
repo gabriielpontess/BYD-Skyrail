@@ -1,13 +1,16 @@
 import { normalizeNewUserInput } from './user-validation.js';
 
-const TRUSTED_APP_ORIGINS = new Set([
-  'https://byd-skyrail.netlify.app',
-  'https://deploy-preview-8--byd-skyrail.netlify.app'
-]);
+const PRODUCTION_ORIGIN = 'https://byd-skyrail.netlify.app';
+const PREVIEW_ORIGIN = 'https://deploy-preview-8--byd-skyrail.netlify.app';
+const TRUSTED_APP_ORIGINS = new Set([PRODUCTION_ORIGIN, PREVIEW_ORIGIN]);
+
+function canonicalRedirect(origin) {
+  const value = String(origin || '').trim().replace(/\/+$/, '');
+  return `${TRUSTED_APP_ORIGINS.has(value) ? value : PRODUCTION_ORIGIN}/`;
+}
 
 export function inviteRedirectForLocation(locationLike = globalThis.location) {
-  const origin = String(locationLike?.origin || '').trim().replace(/\/$/, '');
-  return TRUSTED_APP_ORIGINS.has(origin) ? origin : 'https://byd-skyrail.netlify.app';
+  return canonicalRedirect(locationLike?.origin);
 }
 
 export async function createUserWithClient(client,input,locationLike = globalThis.location){
