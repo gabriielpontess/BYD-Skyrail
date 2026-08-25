@@ -3,11 +3,10 @@ import { documentViewerService } from './documents/viewer-service.js';
 import { packageImportService } from './documents/package-import-service.js';
 
 const $=(selector,root=document)=>root.querySelector(selector);
-const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const routeInfo=()=>{const raw=location.hash.replace(/^#\/?/,'');const [name='',query='']=raw.split('?');return{name:name||'home',params:new URLSearchParams(query)}};
 let enhancing=false;
-const localState={query:'',discipline:'ALL',documentType:'ALL',status:'active'};
+const localState={query:'',discipline:'ALL',documentType:'ALL',approvalStatus:'ALL'};
 
 async function showCatalogSummary(){
   if(routeInfo().name!=='home'||$('.local-catalog-summary'))return;
@@ -58,10 +57,10 @@ async function renderLocalDocumentsPage(){
     const systemMap=new Map(systems.map(system=>[system.id,system.name]));
     const params=routeInfo().params;
     const selectedSystem=params.get('system')||'ALL';
-    const isAdmin=/Administrador/i.test($('#header-user-role')?.textContent||'');
-    const visible=await documentRepository.search(localState.query,{systemId:selectedSystem,discipline:localState.discipline,documentType:localState.documentType,status:isAdmin?localState.status:'active'});
+    const visible=await documentRepository.search(localState.query,{systemId:selectedSystem,discipline:localState.discipline,documentType:localState.documentType,approvalStatus:localState.approvalStatus});
     const disciplines=[...new Set(all.map(doc=>doc.discipline).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
     const types=[...new Set(all.map(doc=>doc.document_type).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
+    const approvalStatuses=[...new Set(all.map(doc=>doc.approval_status||doc.source_status).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
     const systemOptions=systems.filter(system=>system.active!==false).map(system=>`<option value="${esc(system.id)}" ${system.id===selectedSystem?'selected':''}>${esc(system.name)}</option>`).join('');
     page.innerHTML=`<div class="page-head"><div><h1>Documentos</h1><p>Pesquisa e filtros executados integralmente sobre o catálogo local.</p></div></div>
       <section class="search-panel local-document-search-panel">
@@ -69,20 +68,20 @@ async function renderLocalDocumentsPage(){
         <p class="search-hint">Funciona offline · pressione Enter para pesquisar</p>
         <div class="local-filter-grid">
           <label class="canonical-system-filter"><span>Sistema</span><select data-local-system><option value="ALL">Todos os sistemas</option>${systemOptions}</select></label>
-          <label><span>Disciplina</span><select data-local-discipline><option value="ALL">Todas</option>${disciplines.map(value=>`<option ${value===localState.discipline?'selected':''}>${esc(value)}</option>`).join('')}</select></label>
-          <label><span>Tipo de documento</span><select data-local-type><option value="ALL">Todos</option>${types.map(value=>`<option ${value===localState.documentType?'selected':''}>${esc(value)}</option>`).join('')}</select></label>
-          ${isAdmin?`<label><span>Status</span><select data-local-status><option value="active" ${localState.status==='active'?'selected':''}>Vigentes</option><option value="inactive" ${localState.status==='inactive'?'selected':''}>Inativos</option><option value="cancelled" ${localState.status==='cancelled'?'selected':''}>Cancelados</option><option value="ALL" ${localState.status==='ALL'?'selected':''}>Todos</option></select></label>`:''}
+          <label><span>Disciplina</span><select data-local-discipline><option value="ALL">Todas</option>${disciplines.map(value=>`<option value="${esc(value)}" ${value===localState.discipline?'selected':''}>${esc(value)}</option>`).join('')}</select></label>
+          <label><span>Tipo de documento</span><select data-local-type><option value="ALL">Todos</option>${types.map(value=>`<option value="${esc(value)}" ${value===localState.documentType?'selected':''}>${esc(value)}</option>`).join('')}</select></label>
+          <label><span>Status</span><select data-local-approval-status><option value="ALL">Todos</option>${approvalStatuses.map(value=>`<option value="${esc(value)}" ${value===localState.approvalStatus?'selected':''}>${esc(value)}</option>`).join('')}</select></label>
         </div>
       </section>
       <div class="results-bar"><strong>${visible.length.toLocaleString('pt-BR')} documento(s) encontrado(s)</strong></div>
-      ${visible.length?`<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th></tr></thead><tbody>${visible.map(doc=>`<tr data-local-doc-row="${esc(doc.id)}"><td><button class="doc-code" data-open-doc="${esc(doc.id)}" type="button">${esc(doc.code)}</button></td><td><span class="doc-description">${esc(doc.title)}</span>${doc.description?`<small class="local-doc-description">${esc(doc.description)}</small>`:''}</td><td><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span></td><td>${esc(doc.discipline||'—')}</td><td>${esc(doc.document_type||'—')}</td><td>Rev. ${esc(doc.revision)}</td><td><span class="status-badge ${doc.status==='active'?'updated':''}">${doc.status==='active'?'Vigente':esc(doc.status)}</span></td></tr>`).join('')}</tbody></table></div>
-      <div class="mobile-document-list">${visible.map(doc=>`<article class="mobile-doc-card"><div class="mobile-doc-top"><button class="doc-code" data-open-doc="${esc(doc.id)}" type="button">${esc(doc.code)}</button><span class="status-badge updated">Rev. ${esc(doc.revision)}</span></div><span class="doc-description">${esc(doc.title)}</span><div class="mobile-doc-meta"><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span><span>${esc(doc.document_type||doc.discipline||'')}</span></div><div class="mobile-doc-actions"><button class="btn btn-outline" data-open-doc="${esc(doc.id)}" type="button">Abrir</button></div></article>`).join('')}</div>`:`<div class="empty-state"><h3>Nenhum documento encontrado</h3><p>Ajuste a pesquisa ou os filtros.</p></div>`}`;
+      ${visible.length?`<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th></tr></thead><tbody>${visible.map(doc=>`<tr data-local-doc-row="${esc(doc.id)}"><td><button class="doc-code" data-open-doc="${esc(doc.id)}" type="button">${esc(doc.code)}</button></td><td><span class="doc-description">${esc(doc.title)}</span>${doc.description?`<small class="local-doc-description">${esc(doc.description)}</small>`:''}</td><td><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span></td><td>${esc(doc.discipline||'—')}</td><td>${esc(doc.document_type||'—')}</td><td>Rev. ${esc(doc.revision)}</td><td><span class="status-badge updated">${esc(doc.approval_status||doc.source_status||'—')}</span></td></tr>`).join('')}</tbody></table></div>
+      <div class="mobile-document-list">${visible.map(doc=>`<article class="mobile-doc-card"><div class="mobile-doc-top"><button class="doc-code" data-open-doc="${esc(doc.id)}" type="button">${esc(doc.code)}</button><span class="status-badge updated">Rev. ${esc(doc.revision)}</span></div><span class="doc-description">${esc(doc.title)}</span><div class="mobile-doc-meta"><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span><span>${esc(doc.document_type||doc.discipline||'')}</span></div><div class="mobile-doc-meta"><span>${esc(doc.approval_status||doc.source_status||'—')}</span></div><div class="mobile-doc-actions"><button class="btn btn-outline" data-open-doc="${esc(doc.id)}" type="button">Abrir</button></div></article>`).join('')}</div>`:`<div class="empty-state"><h3>Nenhum documento encontrado</h3><p>Ajuste a pesquisa ou os filtros.</p></div>`}`;
     const rerender=()=>{page.dataset.localDocumentsRendering='0';renderLocalDocumentsPage()};
     $('#local-document-search',page).onsubmit=event=>{event.preventDefault();localState.query=new FormData(event.currentTarget).get('query')?.toString().trim()||'';rerender()};
     $('[data-local-system]',page).onchange=event=>{const id=event.target.value;location.hash=id==='ALL'?'#/documents':`#/documents?system=${encodeURIComponent(id)}`};
     $('[data-local-discipline]',page).onchange=event=>{localState.discipline=event.target.value;rerender()};
     $('[data-local-type]',page).onchange=event=>{localState.documentType=event.target.value;rerender()};
-    $('[data-local-status]',page)?.addEventListener('change',event=>{localState.status=event.target.value;rerender()});
+    $('[data-local-approval-status]',page).onchange=event=>{localState.approvalStatus=event.target.value;rerender()};
   }finally{page.dataset.localDocumentsRendering='0'}
 }
 
