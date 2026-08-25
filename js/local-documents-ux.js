@@ -4,9 +4,22 @@ import { packageImportService } from './documents/package-import-service.js';
 
 const $=(selector,root=document)=>root.querySelector(selector);
 const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const fold=value=>String(value??'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ');
 const routeInfo=()=>{const raw=location.hash.replace(/^#\/?/,'');const [name='',query='']=raw.split('?');return{name:name||'home',params:new URLSearchParams(query)}};
 let enhancing=false;
 const localState={query:'',discipline:'ALL',documentType:'ALL',approvalStatus:'ALL'};
+
+function approvalBadgeClass(value){
+  const status=fold(value);
+  if(status==='APROVADO')return'master-approved';
+  if(status==='NÃO CONFORME'||status==='NAO CONFORME')return'master-nonconforming';
+  if(status==='EM ANÁLISE'||status==='EM ANALISE')return'master-analysis';
+  if(status==='NÃO APROVADO'||status==='NAO APROVADO')return'master-not-approved';
+  if(status==='PREVISTO')return'master-planned';
+  if(status==='INCONSISTENTE')return'master-inconsistent';
+  return'master-neutral';
+}
+function approvalBadge(value){const label=value||'—';return`<span class="status-badge local-master-status ${approvalBadgeClass(label)}">${esc(label)}</span>`}
 
 async function showCatalogSummary(){
   if(routeInfo().name!=='home'||$('.local-catalog-summary'))return;
@@ -74,8 +87,8 @@ async function renderLocalDocumentsPage(){
         </div>
       </section>
       <div class="results-bar"><strong>${visible.length.toLocaleString('pt-BR')} documento(s) encontrado(s)</strong></div>
-      ${visible.length?`<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th></tr></thead><tbody>${visible.map(doc=>`<tr data-local-doc-row="${esc(doc.id)}"><td><button class="doc-code" data-open-doc="${esc(doc.id)}" type="button">${esc(doc.code)}</button></td><td><span class="doc-description">${esc(doc.title)}</span>${doc.description?`<small class="local-doc-description">${esc(doc.description)}</small>`:''}</td><td><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span></td><td>${esc(doc.discipline||'—')}</td><td>${esc(doc.document_type||'—')}</td><td>Rev. ${esc(doc.revision)}</td><td><span class="status-badge updated">${esc(doc.approval_status||doc.source_status||'—')}</span></td></tr>`).join('')}</tbody></table></div>
-      <div class="mobile-document-list">${visible.map(doc=>`<article class="mobile-doc-card"><div class="mobile-doc-top"><button class="doc-code" data-open-doc="${esc(doc.id)}" type="button">${esc(doc.code)}</button><span class="status-badge updated">Rev. ${esc(doc.revision)}</span></div><span class="doc-description">${esc(doc.title)}</span><div class="mobile-doc-meta"><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span><span>${esc(doc.document_type||doc.discipline||'')}</span></div><div class="mobile-doc-meta"><span>${esc(doc.approval_status||doc.source_status||'—')}</span></div><div class="mobile-doc-actions"><button class="btn btn-outline" data-open-doc="${esc(doc.id)}" type="button">Abrir</button></div></article>`).join('')}</div>`:`<div class="empty-state"><h3>Nenhum documento encontrado</h3><p>Ajuste a pesquisa ou os filtros.</p></div>`}`;
+      ${visible.length?`<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th></tr></thead><tbody>${visible.map(doc=>`<tr data-local-doc-row="${esc(doc.id)}"><td><button class="doc-code" data-open-doc="${esc(doc.id)}" type="button">${esc(doc.code)}</button></td><td><span class="doc-description">${esc(doc.title)}</span>${doc.description?`<small class="local-doc-description">${esc(doc.description)}</small>`:''}</td><td><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span></td><td>${esc(doc.discipline||'—')}</td><td>${esc(doc.document_type||'—')}</td><td>Rev. ${esc(doc.revision)}</td><td>${approvalBadge(doc.approval_status||doc.source_status)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="mobile-document-list">${visible.map(doc=>`<article class="mobile-doc-card"><div class="mobile-doc-top"><button class="doc-code" data-open-doc="${esc(doc.id)}" type="button">${esc(doc.code)}</button><span class="status-badge updated">Rev. ${esc(doc.revision)}</span></div><span class="doc-description">${esc(doc.title)}</span><div class="mobile-doc-meta"><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span><span>${esc(doc.document_type||doc.discipline||'')}</span></div><div class="mobile-doc-meta">${approvalBadge(doc.approval_status||doc.source_status)}</div><div class="mobile-doc-actions"><button class="btn btn-outline" data-open-doc="${esc(doc.id)}" type="button">Abrir</button></div></article>`).join('')}</div>`:`<div class="empty-state"><h3>Nenhum documento encontrado</h3><p>Ajuste a pesquisa ou os filtros.</p></div>`}`;
     const rerender=()=>{page.dataset.localDocumentsRendering='0';renderLocalDocumentsPage()};
     $('#local-document-search',page).onsubmit=event=>{event.preventDefault();localState.query=new FormData(event.currentTarget).get('query')?.toString().trim()||'';rerender()};
     $('[data-local-system]',page).onchange=event=>{const id=event.target.value;location.hash=id==='ALL'?'#/documents':`#/documents?system=${encodeURIComponent(id)}`};
