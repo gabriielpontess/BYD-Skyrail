@@ -16,6 +16,21 @@ const HEADER_ALIASES={
   revision:['REVISAO','REV']
 };
 
+export const DOCUMENT_TYPE_BY_PREFIX={
+  DE:'Desenho',
+  LM:'Lista de materiais',
+  LC:'Lista de cabos',
+  EQ:'Esquema elétrico',
+  DG:'Diagrama elétrico',
+  ET:'Especificação Técnica',
+  FT:'Formulário de Teste',
+  MC:'Memorial de cálculo',
+  MM:'Manual de manutenção',
+  PF:'Plano de Inspeção e Teste em Fábrica',
+  PN:'Procedimento de montagem',
+  PV:'Procedimento de movimentação e armazenagem'
+};
+
 function headerKey(value){return fold(value).replace(/[^A-Z0-9 ]/g,'').trim()}
 function findColumn(headers,aliases){
   const normalized=headers.map(headerKey);
@@ -28,12 +43,9 @@ function statusToCatalog(value){
   if(/INATIV|SUBSTITUID/.test(s))return'inactive';
   return'active';
 }
-function inferDocumentType(code){
+export function inferDocumentType(code){
   const prefix=fold(code).split('-')[0];
-  if(prefix==='DE')return'Desenho';
-  if(prefix==='PR'||prefix==='PO')return'Procedimento';
-  if(prefix==='MA'||prefix==='MN')return'Manual';
-  return'Documento';
+  return DOCUMENT_TYPE_BY_PREFIX[prefix]||`${prefix||'—'} - Tipo não mapeado`;
 }
 function parseRevisionFromSuffix(value){
   const revision=text(value).replace(/^[-_.\s]+/,'').replace(/[-_.\s]+$/,'');
@@ -163,6 +175,7 @@ export class DocumentPackagerService{
       document_type:inferDocumentType(item.record.code),
       status:statusToCatalog(item.record.status),
       active:statusToCatalog(item.record.status)==='active',
+      approval_status:item.record.status||'',
       file:item.fileName,
       source_status:item.record.status||'',
       master_revision:item.record.revision||''
