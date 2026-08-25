@@ -127,4 +127,6 @@ export async function bootstrapInviteOnboarding() {
   }
 }
 
-bootstrapInviteOnboarding();
+if (typeof document !== 'undefined' && typeof sessionStorage !== 'undefined') {
+  bootstrapInviteOnboarding();
+}
