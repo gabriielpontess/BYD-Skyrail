@@ -38,5 +38,5 @@ assert.match(polish,/button:active:not\(:disabled\)/,'estado pressionado deve se
 assert.match(interaction,/pointerdown/,'menu transitório deve fechar por clique externo');
 assert.match(interaction,/hashchange/,'menu transitório deve fechar ao navegar');
 assert.match(index,/js\/interaction-stability\.js/,'guard de estabilidade deve ser carregado');
-assert.match(sw,/VERSION='1\.5\.1'/,'mudanças finais de shell devem invalidar cache intermediário do service worker');
+assert.match(sw,/VERSION='1\.5\.2'/,'mudanças finais de shell devem invalidar cache intermediário do service worker');
 console.log('ui-stability.test.mjs: ok');
