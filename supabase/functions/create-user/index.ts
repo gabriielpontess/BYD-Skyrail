@@ -1,9 +1,9 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "@supabase/supabase-js";
 
-const PRODUCTION_URL = "https://byd-skyrail.netlify.app";
-const PREVIEW_URL = "https://deploy-preview-8--byd-skyrail.netlify.app";
-const TRUSTED_REDIRECTS = new Set([PRODUCTION_URL, PREVIEW_URL]);
+const PRODUCTION_ORIGIN = "https://byd-skyrail.netlify.app";
+const PREVIEW_ORIGIN = "https://deploy-preview-8--byd-skyrail.netlify.app";
+const TRUSTED_ORIGINS = new Set([PRODUCTION_ORIGIN, PREVIEW_ORIGIN]);
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -14,14 +14,15 @@ const corsHeaders = {
 const json = (status: number, body: Record<string, unknown>) =>
   new Response(JSON.stringify(body), { status, headers: corsHeaders });
 
-function trustedRedirect(value: unknown, fallback = PRODUCTION_URL) {
-  const candidate = String(value || "").trim().replace(/\/$/, "");
-  return TRUSTED_REDIRECTS.has(candidate) ? candidate : fallback;
+function canonicalRedirect(value: unknown, fallbackOrigin = PRODUCTION_ORIGIN) {
+  const candidate = String(value || "").trim().replace(/\/+$/, "");
+  const origin = TRUSTED_ORIGINS.has(candidate) ? candidate : fallbackOrigin;
+  return `${origin}/`;
 }
 
 function inviteRedirect(req: Request, requested?: unknown) {
-  const origin = trustedRedirect(req.headers.get("Origin"), PRODUCTION_URL);
-  return trustedRedirect(requested, origin);
+  const requestOrigin = canonicalRedirect(req.headers.get("Origin"), PRODUCTION_ORIGIN);
+  return canonicalRedirect(requested, requestOrigin.replace(/\/+$/, ""));
 }
 
 Deno.serve(async (req: Request) => {
@@ -72,6 +73,8 @@ Deno.serve(async (req: Request) => {
   if (!["ADMIN", "CONTROLLER", "USER"].includes(role)) return json(400, { error: "Perfil inválido." });
 
   const redirectTo = inviteRedirect(req, payload.redirect_to);
+  console.log(JSON.stringify({ event: "create-user-invite", request_origin: req.headers.get("Origin"), requested_redirect: payload.redirect_to || null, effective_redirect: redirectTo }));
+
   const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
     data: { display_name: displayName },
     redirectTo
