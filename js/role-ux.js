@@ -2,6 +2,7 @@ const $=(selector,root=document)=>root.querySelector(selector);
 const member=()=>{try{return JSON.parse(localStorage.getItem('byd-skyrail-member-cache')||'null')}catch{return null}};
 const role=()=>String(member()?.role||'USER').toUpperCase();
 const isController=()=>role()==='CONTROLLER';
+let pendingEditorRole='';
 
 function label(){return role()==='ADMIN'?'Administrador':role()==='CONTROLLER'?'Controller documental':'Usuário';}
 function description(){return role()==='ADMIN'?'Acesso administrativo, documentos, usuários e auditoria.':role()==='CONTROLLER'?'Pode consultar e importar atualizações documentais neste dispositivo.':'Acesso de consulta a documentos, pesquisa, filtros e viewer.';}
@@ -28,12 +29,12 @@ function renderControllerUpdates(){
 
 function enhanceAdminRoleEditor(){
   const select=document.querySelector('#user-admin-form select[name="role"]');
-  if(!select||select.querySelector('option[value="CONTROLLER"]'))return;
-  const option=document.createElement('option');option.value='CONTROLLER';option.textContent='CONTROLLER';
-  const userOption=select.querySelector('option[value="USER"]');
-  select.insertBefore(option,userOption||null);
-  const currentText=document.querySelector('#user-admin-form')?.closest('.modal')?.querySelector('.modal-head-copy small')?.textContent||'';
-  if(/CONTROLLER/i.test(currentText))select.value='CONTROLLER';
+  if(!select)return;
+  if(!select.querySelector('option[value="CONTROLLER"]')){
+    const option=document.createElement('option');option.value='CONTROLLER';option.textContent='CONTROLLER';
+    const userOption=select.querySelector('option[value="USER"]');select.insertBefore(option,userOption||null);
+  }
+  if(pendingEditorRole&&['ADMIN','CONTROLLER','USER'].includes(pendingEditorRole))select.value=pendingEditorRole;
 }
 
 function enhanceRolePresentation(){
@@ -45,6 +46,11 @@ function enhanceRolePresentation(){
   enhanceAdminRoleEditor();
 }
 
+document.addEventListener('click',event=>{
+  const button=event.target.closest?.('[data-edit-user]');if(!button)return;
+  const summary=button.closest('.user-row')?.querySelector('small')?.textContent||'';
+  pendingEditorRole=String(summary.split('·')[0]||'').trim().toUpperCase();
+},true);
 new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(document.body,{childList:true,subtree:true});
 addEventListener('hashchange',()=>queueMicrotask(enhanceRolePresentation));
 addEventListener('load',enhanceRolePresentation);enhanceRolePresentation();
