@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const root=new URL('../',import.meta.url);
-const [index,localUx,viewer,roleUx,api,css]=await Promise.all([
+const [index,localUx,viewer,roleUx,uxAdjustments,api,css]=await Promise.all([
   readFile(new URL('../index.html',import.meta.url),'utf8'),
   readFile(new URL('../js/local-documents-ux.js',import.meta.url),'utf8'),
   readFile(new URL('../js/documents/viewer-service.js',import.meta.url),'utf8'),
   readFile(new URL('../js/role-ux.js',import.meta.url),'utf8'),
+  readFile(new URL('../js/ux-adjustments.js',import.meta.url),'utf8'),
   readFile(new URL('../js/api.js',import.meta.url),'utf8'),
   readFile(new URL('../polish.css',import.meta.url),'utf8')
 ]);
@@ -25,6 +26,8 @@ assert.match(roleUx,/CONTROLLER/);
 assert.match(roleUx,/function setText\(node,value\)\{if\(node&&node\.textContent!==value\)/,'atualização de texto do perfil deve ser idempotente');
 assert.match(roleUx,/if\(!page\.querySelector\('\.controller-update-card'\)\)/,'tela Controller não pode reescrever o DOM a cada mutação');
 assert.doesNotMatch(roleUx,/observe\(document\.body/,'observer do perfil não deve observar e reescrever todo o body');
+assert.match(uxAdjustments,/option value="CONTROLLER"/,'seletor de criação de usuário deve expor CONTROLLER');
+assert.match(uxAdjustments,/ADMIN, CONTROLLER ou USER/,'texto de perfis deve listar os três perfis');
 assert.match(api,/\['ADMIN','CONTROLLER','USER'\]/);
 assert.match(css,/@media \(max-width:1100px\)/);
 assert.match(css,/@media \(max-width:820px\)/);
