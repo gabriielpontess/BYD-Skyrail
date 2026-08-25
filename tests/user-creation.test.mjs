@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { normalizeNewUserInput } from '../js/users/user-validation.js';
+import { createUserWithClient } from '../js/users/user-provisioning.js';
 
 const valid=normalizeNewUserInput({
   display_name:'  Teste Controller  ',
@@ -18,14 +19,30 @@ assert.throws(()=>normalizeNewUserInput({display_name:'',email:'a@b.com',role:'U
 assert.throws(()=>normalizeNewUserInput({display_name:'Teste',email:'invalido',role:'USER'}),/E-mail inválido/);
 assert.throws(()=>normalizeNewUserInput({display_name:'Teste',email:'a@b.com',role:'ROOT'}),/Perfil de usuário inválido/);
 
-const [api,validation,ux,edge,policy]=await Promise.all([
+const calls=[];
+const fakeClient={functions:{invoke:async(name,options)=>{
+  calls.push({name,options});
+  return{data:{user:{user_id:'u-1',display_name:options.body.display_name,role:options.body.role,active:options.body.active}},error:null};
+}}};
+const created=await createUserWithClient(fakeClient,{display_name:'Teste',email:'TESTE@BYD.COM',role:'CONTROLLER',active:true});
+assert.equal(created.role,'CONTROLLER');
+assert.equal(calls.length,1);
+assert.equal(calls[0].name,'create-user');
+assert.deepEqual(calls[0].options.body,{display_name:'Teste',email:'teste@byd.com',role:'CONTROLLER',active:true});
+
+const duplicateClient={functions:{invoke:async()=>({data:{error:'Já existe um usuário com este e-mail.'},error:null})}};
+await assert.rejects(()=>createUserWithClient(duplicateClient,{display_name:'Teste',email:'teste@byd.com',role:'USER',active:true}),/Já existe um usuário/);
+
+const [api,validation,provisioning,ux,edge,policy]=await Promise.all([
   readFile(new URL('../js/api.js',import.meta.url),'utf8'),
   readFile(new URL('../js/users/user-validation.js',import.meta.url),'utf8'),
+  readFile(new URL('../js/users/user-provisioning.js',import.meta.url),'utf8'),
   readFile(new URL('../js/ux-adjustments.js',import.meta.url),'utf8'),
   readFile(new URL('../supabase/functions/create-user/index.ts',import.meta.url),'utf8'),
   readFile(new URL('../docs/verification-policy.md',import.meta.url),'utf8')
 ]);
-assert.match(api,/functions\.invoke\('create-user'/,'frontend deve invocar a Edge Function segura');
+assert.match(api,/createUserWithClient\(getClient\(\),input\)/,'API pública deve usar o serviço testado');
+assert.match(provisioning,/functions\.invoke\('create-user'/,'serviço deve invocar a Edge Function segura');
 assert.match(validation,/\['ADMIN','CONTROLLER','USER'\]\.includes\(role\)/,'validação deve aceitar os três perfis');
 assert.match(ux,/await createUserInvite\(/,'modal deve executar a criação real');
 assert.doesNotMatch(ux,/Esta prévia não cria usuários no Auth/,'mensagem de prévia não pode permanecer no fluxo ativo');
