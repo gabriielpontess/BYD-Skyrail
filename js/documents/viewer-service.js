@@ -18,7 +18,7 @@ export class DocumentViewerService{
     const pdf=await getDocument({data:bytes}).promise;
     let pageNumber=1,scale=1.2,renderTask=null,closed=false,controlsTimer=null;
     const pointers=new Map();
-    let dragStart=null,pinchStart=null;
+    let dragStart=null,pinchStart=null,tapCandidate=null;
     const backdrop=document.createElement('div');
     backdrop.className='modal-backdrop local-pdf-backdrop';
     backdrop.innerHTML=`<section class="modal local-pdf-viewer" role="dialog" aria-modal="true" aria-label="Documento ${esc(doc.code)}">
@@ -43,6 +43,10 @@ export class DocumentViewerService{
       viewer.classList.remove('local-pdf-controls-hidden');
       positionToolbar();
       hideControlsLater();
+    };
+    const toggleControls=()=>{
+      if(viewer.classList.contains('local-pdf-controls-hidden'))showControls();
+      else{clearTimeout(controlsTimer);viewer.classList.add('local-pdf-controls-hidden')}
     };
 
     const render=async({preserveCenter=false}={})=>{
@@ -73,7 +77,7 @@ export class DocumentViewerService{
       await render();
       stage.scrollLeft=0;stage.scrollTop=0;
     };
-    const zoomTo=async nextScale=>{scale=clamp(nextScale,.25,4);await render({preserveCenter:true});showControls()};
+    const zoomTo=async(nextScale,{showUi=true}={})=>{scale=clamp(nextScale,.25,4);await render({preserveCenter:true});if(showUi)showControls()};
     const close=()=>{
       if(closed)return;
       closed=true;
@@ -86,29 +90,29 @@ export class DocumentViewerService{
       document.removeEventListener('fullscreenchange',onFullscreenChange);
       window.removeEventListener('resize',positionToolbar);
     };
-    const onKeyDown=event=>{
-      if(event.key==='Escape'&&!document.fullscreenElement){event.preventDefault();close()}
-    };
+    const onKeyDown=event=>{if(event.key==='Escape'&&!document.fullscreenElement){event.preventDefault();close()}};
     const onFullscreenChange=()=>{showControls();setTimeout(positionToolbar,50)};
 
     const beginPointer=event=>{
       if(event.button!==undefined&&event.button!==0)return;
-      showControls();
       stage.setPointerCapture?.(event.pointerId);
       pointers.set(event.pointerId,{x:event.clientX,y:event.clientY,type:event.pointerType});
+      if(event.pointerType==='mouse')showControls();
       if(pointers.size===1){
         dragStart={x:event.clientX,y:event.clientY,left:stage.scrollLeft,top:stage.scrollTop};
+        tapCandidate={id:event.pointerId,x:event.clientX,y:event.clientY,startedAt:performance.now(),moved:false,type:event.pointerType};
         stage.classList.add('is-panning');
       }else if(pointers.size===2){
         const [a,b]=[...pointers.values()];
         pinchStart={distance:Math.max(1,distance(a,b)),scale,visualScale:1};
-        dragStart=null;
+        dragStart=null;tapCandidate=null;
         stage.classList.remove('is-panning');
       }
     };
     const movePointer=event=>{
       if(!pointers.has(event.pointerId))return;
       pointers.set(event.pointerId,{x:event.clientX,y:event.clientY,type:event.pointerType});
+      if(tapCandidate&&tapCandidate.id===event.pointerId&&Math.hypot(event.clientX-tapCandidate.x,event.clientY-tapCandidate.y)>8)tapCandidate.moved=true;
       if(pointers.size===2&&pinchStart){
         event.preventDefault();
         const [a,b]=[...pointers.values()];
@@ -126,19 +130,24 @@ export class DocumentViewerService{
     const endPointer=async event=>{
       if(!pointers.has(event.pointerId))return;
       const wasPinching=Boolean(pinchStart&&pointers.size>=2);
+      const candidate=tapCandidate&&tapCandidate.id===event.pointerId?tapCandidate:null;
       pointers.delete(event.pointerId);
       stage.releasePointerCapture?.(event.pointerId);
       if(wasPinching){
         const factor=pinchStart.visualScale||1;
-        pinchStart=null;
+        pinchStart=null;tapCandidate=null;
         canvas.style.transform='';
-        await zoomTo(scale*factor);
+        await zoomTo(scale*factor,{showUi:false});
       }
       if(pointers.size===1){
         const remaining=[...pointers.values()][0];
         dragStart={x:remaining.x,y:remaining.y,left:stage.scrollLeft,top:stage.scrollTop};
         stage.classList.add('is-panning');
-      }else if(!pointers.size){dragStart=null;stage.classList.remove('is-panning')}
+      }else if(!pointers.size){
+        dragStart=null;stage.classList.remove('is-panning');
+        if(candidate&&!candidate.moved&&performance.now()-candidate.startedAt<350&&candidate.type!=='mouse')toggleControls();
+        tapCandidate=null;
+      }
     };
 
     stage.addEventListener('pointerdown',beginPointer);
@@ -152,7 +161,6 @@ export class DocumentViewerService{
       zoomTo(scale*(event.deltaY<0?1.12:.89));
     },{passive:false});
     stage.addEventListener('mousemove',showControls,{passive:true});
-    stage.addEventListener('click',showControls);
     toolbar.addEventListener('mouseenter',showControls);
     toolbar.addEventListener('focusin',showControls);
 
