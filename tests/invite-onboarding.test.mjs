@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import { isInviteCallback, validateActivationPassword } from '../js/users/invite-onboarding.js';
+import { isInviteCallback, validateActivationPassword } from '../js/users/invite-onboarding-logic.js';
 
 assert.equal(isInviteCallback({hash:'#access_token=abc&type=invite',search:''}),true);
 assert.equal(isInviteCallback({hash:'#access_token=abc&type=recovery',search:''}),false);
