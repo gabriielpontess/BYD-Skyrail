@@ -26,14 +26,25 @@ function renderControllerUpdates(){
   document.querySelectorAll('[data-controller-updates]').forEach(button=>button.classList.add('active'));
 }
 
+function enhanceAdminRoleEditor(){
+  const select=document.querySelector('#user-admin-form select[name="role"]');
+  if(!select||select.querySelector('option[value="CONTROLLER"]'))return;
+  const option=document.createElement('option');option.value='CONTROLLER';option.textContent='CONTROLLER';
+  const userOption=select.querySelector('option[value="USER"]');
+  select.insertBefore(option,userOption||null);
+  const currentText=document.querySelector('#user-admin-form')?.closest('.modal')?.querySelector('.modal-head-copy small')?.textContent||'';
+  if(/CONTROLLER/i.test(currentText))select.value='CONTROLLER';
+}
+
 function enhanceRolePresentation(){
   const header=$('#header-user-role');if(header)header.textContent=label();
   const card=$('.access-card .access-role');
   if(card){const strong=card.querySelector('strong'),paragraph=card.querySelector('p');if(strong)strong.textContent=label();if(paragraph)paragraph.textContent=description()}
   if(isController())addControllerNav();
   renderControllerUpdates();
+  enhanceAdminRoleEditor();
 }
 
-new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(document.querySelector('#app'),{childList:true,subtree:true});
+new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(document.body,{childList:true,subtree:true});
 addEventListener('hashchange',()=>queueMicrotask(enhanceRolePresentation));
 addEventListener('load',enhanceRolePresentation);enhanceRolePresentation();
