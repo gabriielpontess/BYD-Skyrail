@@ -47,13 +47,13 @@ Deno.serve(async (req: Request) => {
 
   const { data: callerMember, error: callerError } = await adminClient
     .from("members")
-    .select("role,active")
+    .select("role,active,activated_at")
     .eq("user_id", caller.id)
     .maybeSingle();
 
   if (callerError) return json(500, { error: "Não foi possível validar o administrador." });
-  if (!callerMember?.active || callerMember.role !== "ADMIN") {
-    return json(403, { error: "Apenas administradores ativos podem criar usuários." });
+  if (!callerMember?.active || !callerMember.activated_at || callerMember.role !== "ADMIN") {
+    return json(403, { error: "Apenas administradores ativos e com acesso ativado podem criar usuários." });
   }
 
   let payload: { display_name?: string; email?: string; role?: string; active?: boolean; redirect_to?: string };
@@ -94,9 +94,10 @@ Deno.serve(async (req: Request) => {
       user_id: userId,
       display_name: displayName,
       role,
-      active
+      active,
+      activated_at: null
     }, { onConflict: "user_id" })
-    .select("user_id,display_name,role,active,created_at,updated_at")
+    .select("user_id,display_name,role,active,activated_at,created_at,updated_at")
     .single();
 
   if (memberError || !member) {
