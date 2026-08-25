@@ -1,5 +1,6 @@
 import { getClient } from './client.js';
 import { documentRepository } from './documents/catalog-repository.js';
+import { normalizeNewUserInput } from './users/user-validation.js';
 
 const v=value=>String(value??'').trim();
 
@@ -17,16 +18,7 @@ export async function signOut(){await getClient().auth.signOut({scope:'local'})}
 export async function updateOwnProfile(input){const display_name=v(input?.display_name),cargo=v(input?.cargo),telefone=v(input?.telefone);if(!display_name)throw new Error('Nome obrigatório.');const{error}=await getClient().auth.updateUser({data:{display_name,cargo,telefone}});if(error)throw new Error('Não foi possível atualizar o perfil.');return currentMember()}
 export async function changeOwnPassword(password){const next=String(password??'');if(next.length<8)throw new Error('A nova senha deve ter pelo menos 8 caracteres.');const{error}=await getClient().auth.updateUser({password:next});if(error)throw new Error('Não foi possível alterar a senha.')}
 
-export function normalizeNewUserInput(input){
-  const display_name=v(input?.display_name);
-  const email=v(input?.email).toLowerCase();
-  const role=v(input?.role||'USER').toUpperCase();
-  const active=input?.active===true;
-  if(!display_name)throw new Error('Nome obrigatório.');
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))throw new Error('E-mail inválido.');
-  if(!['ADMIN','CONTROLLER','USER'].includes(role))throw new Error('Perfil de usuário inválido.');
-  return{display_name,email,role,active};
-}
+export { normalizeNewUserInput };
 
 export async function createUserInvite(input){
   const payload=normalizeNewUserInput(input);
