@@ -18,6 +18,8 @@ const [viewer,css,polish]=await Promise.all([
   readFile(new URL('../local-documents.css',import.meta.url),'utf8'),
   readFile(new URL('../polish.css',import.meta.url),'utf8')
 ]);
+assert.match(viewer,/import\('pdfjs-dist'\)/,'PDF.js deve ser carregado somente quando o viewer for aberto');
+assert.doesNotMatch(viewer,/^import\s+\{\s*getDocument[^\n]*from\s+['"]pdfjs-dist['"]/m,'PDF.js não deve fazer parte do bundle inicial');
 assert.match(viewer,/renderPixelRatio/,'viewer deve calcular densidade física do canvas');
 assert.match(viewer,/canvas\.width=.*outputScale/,'canvas físico deve ser maior que o tamanho CSS em telas densas');
 assert.match(viewer,/transform=outputScale===1\?undefined:\[outputScale,0,0,outputScale,0,0\]/,'PDF.js deve renderizar usando transform de alta densidade');
