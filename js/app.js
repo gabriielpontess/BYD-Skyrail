@@ -580,7 +580,7 @@ function resizeAvatar(file) {
         canvas.height = 240;
         const context = canvas.getContext('2d');
         context.drawImage(image, sx, sy, size, size, 0, 0, 240, 240);
-        resolve(canvas.toDataURL(file, .82));
+        resolve(canvas.toDataURL('image/jpeg', .82));
       };
       image.src = reader.result;
     };
