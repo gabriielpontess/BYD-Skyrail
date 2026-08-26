@@ -28,15 +28,23 @@ function closePanel(){if(!open)return;open=false;render()}
 function updateBadge(button,count){
   let badge=button.querySelector('.notification-dot');
   if(!badge){badge=document.createElement('span');badge.className='notification-dot';button.append(badge)}
-  badge.textContent=count>99?'99+':String(count);badge.hidden=count===0;
-  button.setAttribute('aria-label',count?`Notificações, ${count} não lida(s)`:'Notificações');
+  const text=count>99?'99+':String(count);
+  const hidden=count===0;
+  const label=count?`Notificações, ${count} não lida(s)`:'Notificações';
+  if(badge.textContent!==text)badge.textContent=text;
+  if(badge.hidden!==hidden)badge.hidden=hidden;
+  if(button.getAttribute('aria-label')!==label)button.setAttribute('aria-label',label);
 }
 
 function render(){
   const button=bell();if(!button)return;
-  button.setAttribute('aria-haspopup','dialog');
-  button.setAttribute('aria-expanded',String(open));
-  const panel=ensurePanel();panel.classList.toggle('hidden',!open);panel.setAttribute('aria-hidden',String(!open));
+  if(button.getAttribute('aria-haspopup')!=='dialog')button.setAttribute('aria-haspopup','dialog');
+  const expanded=String(open);
+  if(button.getAttribute('aria-expanded')!==expanded)button.setAttribute('aria-expanded',expanded);
+  const panel=ensurePanel();
+  panel.classList.toggle('hidden',!open);
+  const ariaHidden=String(!open);
+  if(panel.getAttribute('aria-hidden')!==ariaHidden)panel.setAttribute('aria-hidden',ariaHidden);
   const unread=notificationService.unreadCount(userId());
   updateBadge(button,unread);
   if(!open)return;
@@ -57,11 +65,9 @@ function render(){
 }
 
 function enhance(){
-  const button=bell();if(!button)return;
-  if(button.dataset.notificationsBound!=='1'){
-    button.dataset.notificationsBound='1';button.removeAttribute('disabled');
-    button.addEventListener('click',event=>{event.stopPropagation();open=!open;render()});
-  }
+  const button=bell();if(!button||button.dataset.notificationsBound==='1')return;
+  button.dataset.notificationsBound='1';button.removeAttribute('disabled');
+  button.addEventListener('click',event=>{event.stopPropagation();open=!open;render()});
   render();
 }
 
