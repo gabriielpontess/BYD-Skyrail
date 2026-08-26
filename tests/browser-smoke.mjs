@@ -229,8 +229,9 @@ async function main(){
   assert.equal(quickLinksOk,true,'Ação dos quick cards não pode quebrar em várias linhas');
   const catalogOverflowOk=await evaluate(`(()=>{const cells=[...document.querySelectorAll('.local-catalog-grid>span')];return cells.length===4&&cells.every(cell=>cell.scrollWidth<=cell.clientWidth+1)})()`);
   assert.equal(catalogOverflowOk,true,'Resumo real do catálogo não pode criar células com overflow');
+  const catalogSpanOk=await evaluate(`(()=>{const card=document.querySelector('.local-catalog-summary'),grid=document.querySelector('.home-widgets');if(!card||!grid)return false;return card.getBoundingClientRect().width>=grid.getBoundingClientRect().width-2})()`);
+  assert.equal(catalogSpanOk,true,'Resumo da documentação local deve ocupar uma linha inteira da grade');
 
-  // Rota adicional do CONTROLLER: uma única aba pode estar ativa por vez.
   await click('.desktop-nav [data-controller-updates]');
   await waitFor(`location.hash.includes('/controller-updates')&&document.querySelector('.controller-update-card')`,{label:'Atualizações CONTROLLER'});
   await assertResponsive('Atualizações CONTROLLER');
@@ -241,7 +242,6 @@ async function main(){
   await waitFor(`location.hash.includes('/home')&&document.querySelector('.hero')`,{label:'Home após Atualizações'});
   await assertVisualHealth('CONTROLLER Home após Atualizações');
 
-  // Documentos reais do catálogo de stress, incluindo Código PW repetido em dois sistemas.
   await click('.desktop-nav [data-nav="documents"]');
   await waitFor(`document.querySelector('[data-local-layout="desktop"]')`,{label:'Documentos desktop local-first'});
   assert.equal(await evaluate(`document.querySelectorAll('[data-local-layout="desktop"] tbody tr').length`),3,'catálogo de stress deve montar 3 documentos');
@@ -261,25 +261,20 @@ async function main(){
   await waitFor(`document.querySelector('[data-local-system]')?.value==='ALL'&&document.querySelectorAll('[data-local-layout="desktop"] tbody tr').length===3`,{label:'fallback de sistema inválido'});
   assert.equal(await evaluate(`document.querySelector('.results-bar strong')?.textContent.trim()`),'3 documento(s) encontrado(s)','hash inválido deve cair em Todos, sem tela vazia falsa');
 
-  // Regressão do scroll: uma área horizontalmente rolável não pode capturar a roda vertical.
-  await evaluate(`(()=>{const app=document.querySelector('#app');app.style.display='none';const host=document.createElement('main');host.id='wheel-host';host.style.cssText='min-height:2400px;padding:100px 80px;background:#f4f7fb';host.innerHTML='<div id="wheel-probe" class="doc-table-wrap" style="background:white"><div style="width:1800px;height:420px"></div></div><div style="height:1600px"></div>';document.body.append(host);window.scrollTo(0,0);return true})()`);
-  await waitFor(`document.querySelector('#wheel-probe')`,{label:'fixture de scroll'});
-  const overscrollY=await evaluate(`getComputedStyle(document.querySelector('#wheel-probe')).overscrollBehaviorY`);
-  assert.equal(overscrollY,'auto','Documentos deve permitir scroll chaining vertical');
-  const probe=await evaluate(`(()=>{const r=document.querySelector('#wheel-probe').getBoundingClientRect();return{x:Math.round(r.left+Math.min(r.width/2,450)),y:Math.round(r.top+Math.min(r.height/2,250))}})()`);
-  await cdp.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:probe.x,y:probe.y,deltaX:0,deltaY:520});
-  await sleep(180);
+  // Wheel real sobre a tabela: adicionamos apenas altura extra à própria página para
+  // que o evento seja testado no mesmo elemento que o usuário utiliza.
+  await evaluate(`(()=>{const spacer=document.createElement('div');spacer.id='wheel-spacer';spacer.style.height='1800px';document.querySelector('#page').append(spacer);window.scrollTo(0,0);return true})()`);
+  const probe=await evaluate(`(()=>{const r=document.querySelector('.doc-table-wrap[data-local-layout="desktop"]').getBoundingClientRect();return{x:Math.round(r.left+Math.min(r.width/2,450)),y:Math.round(Math.max(10,Math.min(window.innerHeight-10,r.top+Math.min(r.height/2,120))))}})()`);
+  for(let i=0;i<3;i++){await cdp.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:probe.x,y:probe.y,deltaX:0,deltaY:260});await sleep(80)}
   assert.ok(await evaluate(`window.scrollY`)>100,'Wheel sobre a listagem deve rolar a página, não ficar preso na tabela');
-  await evaluate(`(()=>{document.querySelector('#wheel-host')?.remove();const app=document.querySelector('#app');app.style.display='';window.scrollTo(0,0);return true})()`);
+  await evaluate(`document.querySelector('#wheel-spacer')?.remove();window.scrollTo(0,0)`);
 
-  // Tablet: a regra legada que escondia a sexta coluna não pode ocultar Revisão da tabela local-first.
   await resize(1024,768,false);
   await evaluate(`location.hash='#/documents?system=sys-a'`);
   await waitFor(`document.querySelector('[data-local-layout="desktop"] tbody tr')`,{label:'Documentos tablet'});
   assert.notEqual(await evaluate(`getComputedStyle(document.querySelector('[data-local-layout="desktop"] tbody tr').cells[5]).display`),'none','Revisão deve continuar visível no tablet');
   await assertVisualHealth('CONTROLLER Documentos tablet');
 
-  // Mobile: renderer troca tabela por cards, mantém contagem do sistema e não cria overflow global.
   await resize(390,844,true);
   await waitFor(`document.querySelector('[data-local-layout="mobile"]')`,{label:'Documentos mobile'});
   assert.equal(await evaluate(`document.querySelectorAll('[data-local-layout="mobile"] .mobile-doc-card').length`),2,'AMV deve manter dois cards no mobile');
@@ -293,12 +288,19 @@ async function main(){
   await waitFor(`document.querySelector('.controller-update-card')`,{label:'Atualizações CONTROLLER mobile'});
   await assertVisualHealth('CONTROLLER Atualizações mobile');
 
+  await waitFor(`document.querySelector('[data-local-import]')`,{label:'ação Importar atualização CONTROLLER'});
+  await click('[data-local-import]');
+  await waitFor(`document.querySelector('#local-import-modal:not(.hidden)')`,{label:'modal Importar atualização'});
+  assert.equal(await evaluate(`document.body.classList.contains('has-modal-open')`),true,'importação aberta deve bloquear o fundo');
+  await assertVisualHealth('Modal Importar atualização mobile');
+  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+  await waitFor(`document.querySelector('#local-import-modal')?.classList.contains('hidden')`,{label:'fechar Importar atualização'});
+
   await cdp.send('Emulation.clearDeviceMetricsOverride');
   await evaluate(`window.dispatchEvent(new Event('resize'))`);await sleep(220);
   await click('.desktop-nav [data-nav="home"]');
   await waitFor(`document.querySelector('.hero')`,{label:'Home desktop restaurada'});
 
-  // Trava do Perfil: repetir navegação e medir tempestade de MutationObserver.
   for(let i=0;i<12;i++){
     await click('.desktop-nav [data-nav="profile"]');
     await waitFor(`location.hash.includes('/profile')&&document.querySelector('.profile-layout')`,{timeout:2200,label:`Perfil CONTROLLER iteração ${i+1}`});
@@ -315,7 +317,6 @@ async function main(){
     await assertResponsive(`Home após Perfil ${i+1}`);
   }
 
-  // Menu, sino e modais: abrir/fechar deve ser reversível e o fundo não rola sob modal.
   await click('#user-menu-button');
   assert.equal(await evaluate(`!document.querySelector('#user-menu').classList.contains('hidden')`),true,'menu deveria abrir');
   await evaluate(`document.querySelector('#page').click()`);
@@ -344,11 +345,9 @@ async function main(){
   await evaluate(`document.querySelector('#modal-busy').dataset.operationRunning='0';document.querySelector('#modal-busy .is-loading').classList.remove('is-loading');document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
   await waitFor(`!document.querySelector('#modal-busy')`,{label:'modal liberado fecha normalmente'});
 
-  // PDF em zoom alto: canvas maior que o viewport deve começar no lado alcançável, sem conteúdo perdido à esquerda.
   const pdfAlignment=await evaluate(`(()=>{const host=document.createElement('div');host.style.cssText='position:absolute;left:-10000px;width:320px;height:240px';host.className='local-pdf-stage';const canvas=document.createElement('canvas');canvas.style.width='900px';canvas.style.height='500px';host.append(canvas);document.body.append(host);const hr=host.getBoundingClientRect(),cr=canvas.getBoundingClientRect();const result={leftOk:cr.left>=hr.left-1,scrollOk:host.scrollWidth>=899,display:getComputedStyle(canvas).display};host.remove();return result})()`);
   assert.deepEqual(pdfAlignment,{leftOk:true,scrollOk:true,display:'block'},'PDF ampliado deve permanecer totalmente alcançável pelo scroll');
 
-  // USER: mesma varredura nas telas permitidas e nenhuma navegação administrativa residual.
   await setRole('USER');
   assert.equal(await evaluate(`document.querySelector('[data-controller-updates]')===null`),true,'USER não pode receber Atualizações');
   assert.equal(await evaluate(`document.querySelector('.desktop-nav [data-nav="audit"]')===null`),true,'USER não pode receber Auditoria');
@@ -360,7 +359,6 @@ async function main(){
   await waitFor(`document.querySelector('.profile-layout')`,{label:'Perfil USER'});await assertResponsive('Perfil USER');
   await assertVisualHealth('USER Perfil desktop');
 
-  // ADMIN: perfil e estado de erro da Auditoria também entram no mesmo padrão visual.
   await setRole('ADMIN');
   assert.equal(await evaluate(`document.querySelector('.desktop-nav [data-nav="audit"]')!==null`),true,'ADMIN deve receber Auditoria');
   assert.equal(await evaluate(`document.querySelector('[data-controller-updates]')===null`),true,'ADMIN não deve receber Atualizações de Controller');
@@ -375,7 +373,6 @@ async function main(){
   await assertVisualHealth('ADMIN Auditoria offline');
 
   await resize(390,844,true);
-  // Tabelas administrativas antigas não podem desaparecer no mobile: devem virar área horizontal rolável.
   const adminTableDisplay=await evaluate(`(()=>{const host=document.createElement('div');host.id='admin-mobile-fixture';host.innerHTML='<div id="admin-content"><div class="doc-table-wrap"><table class="doc-table"><tbody><tr><td>Documento</td></tr></tbody></table></div></div>';document.body.append(host);const wrap=host.querySelector('.doc-table-wrap');const result={display:getComputedStyle(wrap).display,overflow:getComputedStyle(wrap).overflowX};host.remove();return result})()`);
   assert.equal(adminTableDisplay.display,'block','Tabela de documentos administrativos não pode desaparecer no mobile');
   assert.ok(['auto','scroll'].includes(adminTableDisplay.overflow),'Tabela administrativa deve permitir rolagem horizontal no mobile');
@@ -385,10 +382,16 @@ async function main(){
   assert.ok(['auto','scroll'].includes(await evaluate(`getComputedStyle(document.querySelector('#audit-wrap-fixture').parentElement).overflowX`)),'audit-table deve rolar horizontalmente sem vazar a página');
   await assertVisualHealth('ADMIN Auditoria mobile');
 
+  await waitFor(`document.querySelector('[data-document-packager]')`,{label:'ação Preparar pacote ADMIN'});
+  await click('[data-document-packager]');
+  await waitFor(`document.querySelector('#document-packager-modal:not(.hidden)')`,{label:'modal Preparar pacote'});
+  await assertVisualHealth('Modal Preparar pacote mobile');
+  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+  await waitFor(`document.querySelector('#document-packager-modal')?.classList.contains('hidden')`,{label:'fechar Preparar pacote'});
+
   const bootErrors=await evaluate(`globalThis.__BYD_BOOT_DIAG?.errors||[]`);
   assert.deepEqual(bootErrors,[],`Erros de bootstrap detectados: ${JSON.stringify(bootErrors)}`);
 
-  // Login também passa pela varredura mobile, sem depender de sessão remota.
   await evaluate(`localStorage.removeItem('byd-skyrail-member-cache');location.hash='#/home';location.reload()`);
   await waitFor(`document.querySelector('.login-card')`,{timeout:5000,label:'Login mobile'});
   await assertVisualHealth('Login mobile');
