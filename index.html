@@ -54,12 +54,12 @@
         let sw = 'indisponível';
         try {
           if ('serviceWorker' in navigator) {
-            const registration = await navigator.serviceWorker.getRegistration();
-            sw = registration ? `registrado · controller=${navigator.serviceWorker.controller ? 'sim' : 'não'} · active=${registration.active?.state || 'não'}` : 'não registrado';
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            sw = `${registrations.length} registro(s) · controller=${navigator.serviceWorker.controller ? 'sim' : 'não'}`;
           }
         } catch (error) { sw = `erro: ${error?.message || error}`; }
         const details = [
-          `build: PR8-ios-diag-2`,
+          `build: PR8-sw-retired-1`,
           `tempo: ${Math.round((Date.now()-startedAt)/1000)}s`,
           `modo standalone: ${isStandalone() ? 'sim' : 'não'}`,
           `online: ${navigator.onLine ? 'sim' : 'não'}`,
@@ -80,32 +80,57 @@
       });
     })();
   </script>
-  <script type="module" src="./js/users/invite-onboarding.js"></script>
-  <script type="module" src="./js/app.js"></script>
-  <script type="module" src="./js/systems-ux.js"></script>
-  <script type="module" src="./js/ux-adjustments.js"></script>
-  <script type="module" src="./js/local-documents-ux.js"></script>
-  <script type="module" src="./js/document-packager-ux.js"></script>
-  <script type="module" src="./js/role-ux.js"></script>
-  <script type="module" src="./js/notifications-ux.js"></script>
-  <script>
-    if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-      let reloadingForWorker = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (reloadingForWorker) return;
-        reloadingForWorker = true;
-        location.reload();
-      });
+  <script type="module">
+    const bootModules = [
+      './js/users/invite-onboarding.js',
+      './js/app.js',
+      './js/systems-ux.js',
+      './js/ux-adjustments.js',
+      './js/local-documents-ux.js',
+      './js/document-packager-ux.js',
+      './js/role-ux.js',
+      './js/notifications-ux.js'
+    ];
 
-      addEventListener('load', async () => {
-        try {
-          const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/', updateViaCache: 'none' });
-          await registration.update();
-        } catch (error) {
-          console.warn('[BYD Skyrail] Service Worker indisponível:', error);
-          globalThis.__BYD_BOOT_DIAG?.errors?.push(`Service Worker: ${error?.message || error}`);
+    async function retireLegacyServiceWorker() {
+      if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return true;
+      try {
+        const url = new URL(location.href);
+        const pass = Math.max(0, Number(url.searchParams.get('__byd_swclean') || 0) || 0);
+        const hadController = Boolean(navigator.serviceWorker.controller);
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        const cacheKeys = 'caches' in globalThis ? await caches.keys() : [];
+        const bydCaches = cacheKeys.filter(key => key.startsWith('byd-skyrail-'));
+
+        await Promise.all(registrations.map(registration => registration.unregister()));
+        if ('caches' in globalThis) await Promise.all(bydCaches.map(key => caches.delete(key)));
+
+        if ((hadController || registrations.length || bydCaches.length) && pass < 2) {
+          url.searchParams.set('__byd_swclean', String(pass + 1));
+          location.replace(url.toString());
+          return false;
         }
-      });
+
+        if (url.searchParams.has('__byd_swclean')) {
+          url.searchParams.delete('__byd_swclean');
+          history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+        }
+        return true;
+      } catch (error) {
+        console.warn('[BYD Skyrail] Falha ao aposentar Service Worker legado:', error);
+        globalThis.__BYD_BOOT_DIAG?.errors?.push(`SW cleanup: ${error?.message || error}`);
+        return true;
+      }
+    }
+
+    try {
+      const canBoot = await retireLegacyServiceWorker();
+      if (canBoot) {
+        for (const modulePath of bootModules) await import(modulePath);
+      }
+    } catch (error) {
+      console.error('[BYD Skyrail] Falha crítica no bootstrap:', error);
+      globalThis.__BYD_BOOT_DIAG?.errors?.push(`Bootstrap: ${error?.message || error}`);
     }
   </script>
 </body>
