@@ -50,7 +50,7 @@ export class DocumentViewerService{
       </header>
       <div class="local-pdf-toolbar" data-pdf-controls role="toolbar" aria-label="Controles do PDF">
         <button class="btn btn-outline" data-pdf-prev type="button" aria-label="Página anterior">${viewerIcon('previous')}<span>Anterior</span></button>
-        <span class="local-pdf-page-indicator">Página <strong data-pdf-page>1</strong> de <strong>${pdf.numPages}</strong></span>
+        <span class="local-pdf-page-indicator"><span>Página</span><strong data-pdf-page>1</strong><span>de</span><strong>${pdf.numPages}</strong></span>
         <button class="btn btn-outline" data-pdf-next type="button" aria-label="Próxima página"><span>Próxima</span>${viewerIcon('next')}</button>
         <span class="local-pdf-toolbar-separator" aria-hidden="true"></span>
         <button class="btn btn-outline" data-pdf-fit type="button">${viewerIcon('fit')}<span>Ajustar</span></button>
@@ -93,18 +93,17 @@ export class DocumentViewerService{
         y:(stage.scrollTop+stage.clientHeight/2)/Math.max(1,beforeSize.height)
       }:null;
       if(renderTask)try{renderTask.cancel()}catch{}
-      canvas.style.transform='';
       const page=await pdf.getPage(pageNumber);
       if(closed||serial!==renderSerial)return;
       const displayViewport=page.getViewport({scale});
       const density=renderDensity(displayViewport);
       const renderViewport=page.getViewport({scale:scale*density});
-      canvas.width=Math.max(1,Math.ceil(renderViewport.width));
-      canvas.height=Math.max(1,Math.ceil(renderViewport.height));
-      canvas.style.width=`${Math.max(1,displayViewport.width)}px`;
-      canvas.style.height=`${Math.max(1,displayViewport.height)}px`;
+      const stagingCanvas=document.createElement('canvas');
+      stagingCanvas.width=Math.max(1,Math.ceil(renderViewport.width));
+      stagingCanvas.height=Math.max(1,Math.ceil(renderViewport.height));
+      const stagingContext=stagingCanvas.getContext('2d',{alpha:false});
       updateUi();
-      const task=page.render({canvasContext:ctx,viewport:renderViewport});
+      const task=page.render({canvasContext:stagingContext,viewport:renderViewport});
       renderTask=task;
       try{
         await task.promise;
@@ -115,6 +114,12 @@ export class DocumentViewerService{
         if(serial===renderSerial)viewer.setAttribute('aria-busy','false');
       }
       if(closed||serial!==renderSerial)return;
+      canvas.style.transform='';
+      canvas.width=stagingCanvas.width;
+      canvas.height=stagingCanvas.height;
+      canvas.style.width=`${Math.max(1,displayViewport.width)}px`;
+      canvas.style.height=`${Math.max(1,displayViewport.height)}px`;
+      ctx.drawImage(stagingCanvas,0,0);
       if(previousCenter){
         const afterSize=cssCanvasSize();
         stage.scrollLeft=Math.max(0,previousCenter.x*afterSize.width-stage.clientWidth/2);
