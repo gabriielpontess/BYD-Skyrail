@@ -54,7 +54,16 @@ async function writeNative(catalog) {
 }
 
 export class JsonDocumentRepository {
-  constructor() { this.catalog = null; }
+  constructor() {
+    this.catalog = null;
+    this.documentById = new Map();
+  }
+
+  indexCatalog(catalog) {
+    this.catalog = catalog;
+    this.documentById = new Map(catalog.documents.map(doc => [String(doc.id), doc]));
+    return catalog;
+  }
 
   async load({ force = false } = {}) {
     if (this.catalog && !force) return this.catalog;
@@ -64,16 +73,14 @@ export class JsonDocumentRepository {
       const raw = localStorage.getItem(WEB_KEY);
       if (raw) source = normalizeCatalog(JSON.parse(raw));
     }
-    this.catalog = source || normalizeCatalog(bundledCatalog);
-    return this.catalog;
+    return this.indexCatalog(source || normalizeCatalog(bundledCatalog));
   }
 
   async replace(catalog) {
     const normalized = normalizeCatalog(catalog);
     if (Capacitor.isNativePlatform()) await writeNative(normalized);
     else localStorage.setItem(WEB_KEY, JSON.stringify(normalized));
-    this.catalog = normalized;
-    return normalized;
+    return this.indexCatalog(normalized);
   }
 
   async getAll({ includeInactive = false } = {}) {
@@ -83,8 +90,8 @@ export class JsonDocumentRepository {
   }
 
   async getById(id) {
-    const catalog = await this.load();
-    return catalog.documents.find(doc => doc.id === id) || null;
+    await this.load();
+    return this.documentById.get(String(id)) || null;
   }
 
   async getSystems({ includeInactive = false } = {}) {
