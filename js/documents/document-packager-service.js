@@ -7,6 +7,9 @@ const normalizePath=value=>String(value||'').replace(/\\/g,'/').replace(/^\.\//,
 const basename=path=>normalizePath(path).split('/').pop()||'';
 const slug=value=>fold(value).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')||'sem-sistema';
 const text=value=>String(value??'').trim();
+const normalizeSystemName=value=>fold(value).replace(/^\d+\s*[.)_-]\s*/,'').trim();
+const systemFromPath=path=>{const parts=normalizePath(path).split('/').filter(Boolean);return parts.length>1?normalizeSystemName(parts[0]):''};
+const masterKey=record=>`${record.normalizedCode}|${normalizeSystemName(record.system)}`;
 
 const HEADER_ALIASES={
   system:['SISTEMA'],
@@ -29,7 +32,15 @@ export const DOCUMENT_TYPE_BY_PREFIX={
   MM:'Manual de manutenção',
   PF:'Plano de Inspeção e Teste em Fábrica',
   PN:'Procedimento de montagem',
-  PV:'Procedimento de movimentação e armazenagem'
+  PV:'Procedimento de movimentação e armazenagem',
+  PI:'Procedimento de Inspeção de Fábrica',
+  PL:'Procedimento de Teste de Instalação',
+  TR:'Plano de Treinamento',
+  MD:'Memorial Descritivo',
+  MO:'Manual de Operação',
+  PT:'Procedimento de Teste',
+  RT:'Relatório de Testes',
+  EM:'Especificação de Materiais'
 };
 
 function headerKey(value){return fold(value).replace(/[^A-Z0-9 ]/g,'').trim()}
@@ -72,28 +83,30 @@ export function parseMasterRows(rows){
     const row=Array.isArray(rows[i])?rows[i]:[];
     const code=text(row[columns.code]);if(!code)continue;
     const normalized=normalizeCode(code);if(!normalized)continue;
-    if(seen.has(normalized)){duplicates.add(code);continue}
-    seen.add(normalized);
+    const system=columns.system>=0?text(row[columns.system]):'';
+    const key=`${normalized}|${normalizeSystemName(system)}`;
+    if(seen.has(key)){duplicates.add(`${code} · ${system||'Sem sistema'}`);continue}
+    seen.add(key);
     records.push({
       code,
       normalizedCode:normalized,
       description:text(row[columns.description]),
-      system:columns.system>=0?text(row[columns.system]):'',
+      system,
       phase:columns.phase>=0?text(row[columns.phase]):'',
       status:columns.status>=0?text(row[columns.status]):'',
       revision:columns.revision>=0?text(row[columns.revision]):''
     });
   }
-  if(duplicates.size)throw new Error(`A lista mestra possui Código PW duplicado: ${[...duplicates].slice(0,5).join(', ')}${duplicates.size>5?'…':''}`);
+  if(duplicates.size)throw new Error(`A lista mestra possui Código PW duplicado dentro do mesmo SISTEMA: ${[...duplicates].slice(0,5).join(', ')}${duplicates.size>5?'…':''}`);
   if(!records.length)throw new Error('Nenhum documento válido foi encontrado na lista mestra.');
-  return records.sort((a,b)=>b.normalizedCode.length-a.normalizedCode.length);
+  return records.sort((a,b)=>b.normalizedCode.length-a.normalizedCode.length||normalizeSystemName(a.system).localeCompare(normalizeSystemName(b.system),'pt-BR'));
 }
 
 export function matchPdfName(fileName,masterRecords){
   const file=basename(fileName);
   const stem=file.replace(/\.pdf$/i,'');
   const normalizedStem=normalizeCode(stem);
-  let best=null;
+  const candidates=[];
   for(const record of masterRecords){
     if(!normalizedStem.startsWith(record.normalizedCode))continue;
     const suffixNormalized=normalizedStem.slice(record.normalizedCode.length);
@@ -102,9 +115,17 @@ export function matchPdfName(fileName,masterRecords){
     let revision='';
     if(directMatches)revision=parseRevisionFromSuffix(stem.slice(record.code.length));
     if(!revision&&suffixNormalized&&suffixNormalized.length<=6)revision=suffixNormalized;
-    if(!suffixNormalized||revision){best={record,revision,file};break}
+    if(!suffixNormalized||revision)candidates.push({record,revision,file});
   }
-  return best;
+  if(!candidates.length)return null;
+  if(candidates.length===1)return candidates[0];
+  const folderSystem=systemFromPath(fileName);
+  if(folderSystem){
+    const sameSystem=candidates.filter(item=>normalizeSystemName(item.record.system)===folderSystem);
+    if(sameSystem.length===1)return sameSystem[0];
+  }
+  const keys=new Set(candidates.map(item=>masterKey(item.record)));
+  return keys.size===1?candidates[0]:null;
 }
 
 async function readMasterFile(file){
@@ -213,23 +234,26 @@ function buildMetadata(analysis){
     }
   }
   const packageVersion=packageVersionNow(),createdAt=new Date().toISOString();
-  const documents=analysis.matched.map(item=>({
-    id:`doc-${item.record.normalizedCode.toLowerCase()}`,
-    code:item.record.code,
-    title:item.record.description||item.record.code,
-    description:item.record.description||'',
-    revision:item.revision,
-    system_id:systemIdByName.get(item.record.system||'Sem sistema'),
-    system_name:item.record.system||'Sem sistema',
-    discipline:item.record.phase||'',
-    document_type:inferDocumentType(item.record.code),
-    status:statusToCatalog(item.record.status),
-    active:statusToCatalog(item.record.status)==='active',
-    approval_status:item.record.status||'',
-    file:item.fileName,
-    source_status:item.record.status||'',
-    master_revision:item.record.revision||''
-  }));
+  const documents=analysis.matched.map(item=>{
+    const systemName=item.record.system||'Sem sistema';
+    return{
+      id:`doc-${slug(systemName)}-${item.record.normalizedCode.toLowerCase()}`,
+      code:item.record.code,
+      title:item.record.description||item.record.code,
+      description:item.record.description||'',
+      revision:item.revision,
+      system_id:systemIdByName.get(systemName),
+      system_name:systemName,
+      discipline:item.record.phase||'',
+      document_type:inferDocumentType(item.record.code),
+      status:statusToCatalog(item.record.status),
+      active:statusToCatalog(item.record.status)==='active',
+      approval_status:item.record.status||'',
+      file:item.packagedFile,
+      source_status:item.record.status||'',
+      master_revision:item.record.revision||''
+    };
+  });
   const catalog={schemaVersion:1,catalogVersion:packageVersion,generatedAt:createdAt,packageVersion,systems,documents};
   const manifest={schemaVersion:1,packageVersion,createdAt,catalogFile:'documents.json',documentCount:documents.length,contentBytes:analysis.estimatedOutputBytes,sourceZipBytes:analysis.sourceZipBytes};
   return{packageVersion,documents,systems,catalog,manifest,fileName:`skyrail-update-${packageVersion}.zip`};
@@ -267,35 +291,34 @@ export class DocumentPackagerService{
     const pdfEntries=directory.filter(entry=>/\.pdf$/i.test(entry.path)&&!entry.path.endsWith('/'));
     if(!pdfEntries.length)throw new Error('O ZIP selecionado não contém arquivos PDF.');
 
-    const matched=[],unmatched=[],unmatchedDetails=[],seenCodes=new Set(),seenFiles=new Set(),revisionWarnings=[];
-    const codeFiles=new Map(),fileOccurrences=new Map();
+    const matched=[],unmatched=[],unmatchedDetails=[],seenMasterKeys=new Set(),revisionWarnings=[];
+    const recordFiles=new Map(),fileOccurrences=new Map();
     for(let index=0;index<pdfEntries.length;index++){
       throwIfAborted(signal);
       const entry=pdfEntries[index];
-      const fileKey=fold(entry.fileName);
-      if(!fileOccurrences.has(fileKey))fileOccurrences.set(fileKey,[]);
-      fileOccurrences.get(fileKey).push({fileName:entry.fileName,path:entry.path});
       const result=matchPdfName(entry.path,master);
       onProgress?.({phase:'match',done:index+1,total:pdfEntries.length,name:entry.fileName});
       if(!result){unmatched.push(entry.fileName);unmatchedDetails.push({fileName:entry.fileName,path:entry.path});continue}
-      const key=result.record.normalizedCode;
-      if(!codeFiles.has(key))codeFiles.set(key,{code:result.record.code,files:[]});
-      codeFiles.get(key).files.push({fileName:entry.fileName,path:entry.path,fileRevision:result.revision||'',masterRevision:text(result.record.revision)});
-      if(seenCodes.has(key))continue;
-      if(seenFiles.has(fileKey))continue;
-      seenCodes.add(key);seenFiles.add(fileKey);
+      const key=masterKey(result.record);
+      const fileKey=`${normalizeSystemName(result.record.system)}|${fold(entry.fileName)}`;
+      if(!recordFiles.has(key))recordFiles.set(key,{code:result.record.code,system:result.record.system||'',files:[]});
+      recordFiles.get(key).files.push({fileName:entry.fileName,path:entry.path,fileRevision:result.revision||'',masterRevision:text(result.record.revision)});
+      if(!fileOccurrences.has(fileKey))fileOccurrences.set(fileKey,{fileName:entry.fileName,system:result.record.system||'',files:[]});
+      fileOccurrences.get(fileKey).files.push({fileName:entry.fileName,path:entry.path});
+      if(seenMasterKeys.has(key))continue;
+      seenMasterKeys.add(key);
       const masterRevision=text(result.record.revision);
       const revision=result.revision||masterRevision||'0';
       if(result.revision&&masterRevision&&fold(result.revision)!==fold(masterRevision))revisionWarnings.push({code:result.record.code,fileRevision:result.revision,masterRevision,fileName:entry.fileName,path:entry.path,system:result.record.system||''});
-      matched.push({...entry,record:result.record,revision});
+      matched.push({...entry,record:result.record,revision,packagedFile:`${slug(result.record.system||'Sem sistema')}/${entry.fileName}`});
     }
 
-    const duplicateCodeDetails=[...codeFiles.values()].filter(item=>item.files.length>1);
-    const duplicateCodes=duplicateCodeDetails.map(item=>item.code);
-    const duplicateFileNameDetails=[...fileOccurrences.entries()].filter(([,files])=>files.length>1).map(([fileName,files])=>({fileName,files}));
-    const duplicateFileNames=duplicateFileNameDetails.map(item=>item.fileName);
-    const missingMasterDetails=master.filter(record=>!seenCodes.has(record.normalizedCode)).map(record=>({code:record.code,system:record.system||'',revision:record.revision||'',description:record.description||''}));
-    const missingMaster=missingMasterDetails.map(record=>record.code);
+    const duplicateCodeDetails=[...recordFiles.values()].filter(item=>item.files.length>1);
+    const duplicateCodes=duplicateCodeDetails.map(item=>`${item.code} · ${item.system||'Sem sistema'}`);
+    const duplicateFileNameDetails=[...fileOccurrences.values()].filter(item=>item.files.length>1);
+    const duplicateFileNames=duplicateFileNameDetails.map(item=>`${item.fileName} · ${item.system||'Sem sistema'}`);
+    const missingMasterDetails=master.filter(record=>!seenMasterKeys.has(masterKey(record))).map(record=>({code:record.code,system:record.system||'',revision:record.revision||'',description:record.description||''}));
+    const missingMaster=missingMasterDetails.map(record=>`${record.code} · ${record.system||'Sem sistema'}`);
     const missingSystem=matched.filter(item=>!text(item.record.system)).map(item=>item.record.code);
     const missingStatus=matched.filter(item=>!text(item.record.status)).map(item=>item.record.code);
     const unknownTypePrefixes=[...new Set(matched.filter(item=>/Tipo não mapeado/.test(inferDocumentType(item.record.code))).map(item=>fold(item.record.code).split('-')[0]||'—'))];
@@ -338,7 +361,7 @@ export class DocumentPackagerService{
         const path=normalizePath(entry.name),item=matchedByPath.get(path);
         if(item){
           currentCode=item.record.code;
-          const outputEntry=new ZipPassThrough(`documents/${item.fileName}`);zip.add(outputEntry);
+          const outputEntry=new ZipPassThrough(`documents/${item.packagedFile}`);zip.add(outputEntry);
           entry.ondata=(error,data,final)=>{
             if(error){sink.fail(error);return}
             outputEntry.push(data||new Uint8Array(),Boolean(final));
