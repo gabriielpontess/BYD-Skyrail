@@ -70,9 +70,23 @@ html[data-byd-role="CONTROLLER"] [data-controller-updates] svg{width:19px;height
 .modal-body,.local-import-body{min-width:0}.modal-row>div{min-width:0}
 
 /* PDF viewer: controls remain outside the scrollable document and canvas is HiDPI-rendered by viewer-service. */
-.local-pdf-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.local-pdf-toolbar{position:relative;flex:0 0 auto;max-width:none;width:100%;overflow:auto;overscroll-behavior:contain}.local-pdf-stage{overscroll-behavior:contain}.local-pdf-head-copy strong{overflow-wrap:anywhere}.local-pdf-stage canvas{max-width:none}
+.local-pdf-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.local-pdf-toolbar{position:relative;flex:0 0 auto;max-width:none;width:100%;overflow:auto;overscroll-behavior:contain}.local-pdf-stage{overscroll-behavior:contain;text-align:initial}.local-pdf-head-copy strong{overflow-wrap:anywhere}.local-pdf-stage canvas{display:block;margin-left:auto;margin-right:auto;max-width:none}
+
+/* Systemic visual-audit guardrails: a defect class fixed in one component must not reappear in siblings. */
+.quick-grid>*,.home-widgets>*,.stats-grid>*,.audit-grid>*,.profile-layout>*,.profile-side>*,.profile-main>*,.profile-grid>*,.password-grid>*,.systems-card-grid>*,.local-filter-grid>*,.local-packager-metrics>*,.local-packager-size>*,.local-packager-actions>*,.widget-head>*,.sync-summary>div,.activity-row>div,.ux-detail-item,.field,.local-packager-field,.modal-row,.user-row>div{min-width:0}
+.btn,button,input,select,textarea{max-width:100%}
+.btn{white-space:normal;overflow-wrap:anywhere;line-height:1.2}
+.widget-head,.sync-summary,.profile-section-head,.systems-section-head,.modal-row,.user-row{min-width:0}
+.hero h1,.hero p,.sync-summary h3,.sync-summary p,.activity-row,.ux-detail-item strong,.ux-detail-item span,.modal-row strong,.modal-row .subtle,.local-packager-warning,.local-packager-errors,.local-packager-ok,.local-import-status{overflow-wrap:anywhere;word-break:normal}
+.audit-table-wrap{max-width:100%;overflow-x:auto;overflow-y:visible;overscroll-behavior-x:contain;overscroll-behavior-y:auto;border-radius:10px;scrollbar-gutter:stable}
+.audit-table-wrap .audit-table{min-width:620px}
+body.has-modal-open{overflow:hidden}
+.modal-backdrop .modal{overscroll-behavior:contain}
 
 /* Tablet landscape / narrower desktop. */
+@media (max-width:1199px){
+  .doc-table-wrap[data-local-layout="desktop"] .doc-table th:nth-child(6),.doc-table-wrap[data-local-layout="desktop"] .doc-table td:nth-child(6){display:table-cell}
+}
 @media (max-width:1100px){
   .page-shell{padding-left:18px;padding-right:18px}.quick-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.home-widgets{grid-template-columns:repeat(2,minmax(0,1fr))}.doc-table{min-width:980px}.notification-panel{right:14px}
   .system-home-card{min-height:104px}.panel-card,.widget-card,.search-panel{min-width:0}
@@ -91,6 +105,8 @@ html[data-byd-role="CONTROLLER"] [data-controller-updates] svg{width:19px;height
   .mobile-doc-card{padding:14px}.mobile-doc-actions{justify-content:flex-start}.results-bar{align-items:flex-start}.results-tools{width:100%}.results-tools select{max-width:100%}
   .local-pagination{justify-content:space-between}.local-pagination span{order:-1;width:100%;text-align:center}
   html[data-byd-role="CONTROLLER"] .mobile-bottom-nav{grid-template-columns:repeat(4,minmax(0,1fr))!important}.mobile-bottom-nav [data-controller-updates] span{font-size:9px}
+  #admin-content .doc-table-wrap{display:block;max-width:100%;overflow-x:auto}
+  #admin-content .doc-table{min-width:900px}
 }
 @media (max-width:560px){
   .notification-head-actions .btn{flex:1 1 auto}.system-home-card{padding:15px}.systems-home-section{padding:16px}
@@ -98,5 +114,8 @@ html[data-byd-role="CONTROLLER"] [data-controller-updates] svg{width:19px;height
   .local-pdf-head-actions .btn span{display:none}.local-pdf-head-actions .btn{flex:0 0 44px;width:44px;padding-left:10px;padding-right:10px}.local-pdf-page-indicator{font-size:.82rem}.local-pdf-zoom-indicator{min-width:88px}.local-pdf-toolbar{gap:6px}
 }
 @media (max-width:390px){.local-pagination button{flex:1}.notification-head-actions{width:100%}}
-@media (hover:none) and (pointer:coarse){button,.btn,.nav-btn,.mobile-nav-btn{min-height:44px;-webkit-tap-highlight-color:transparent}.doc-table tbody tr[data-open-doc]{min-height:48px}.notification-item{min-height:66px}.local-pdf-toolbar .btn{min-height:44px}.mobile-doc-card[data-open-doc]:active{transform:scale(.995)}}
+@media (hover:none) and (pointer:coarse){
+  button,.btn,.nav-btn,.mobile-nav-btn{min-height:44px;-webkit-tap-highlight-color:transparent}.doc-table tbody tr[data-open-doc]{min-height:48px}.notification-item{min-height:66px}.local-pdf-toolbar .btn{min-height:44px}.mobile-doc-card[data-open-doc]:active{transform:scale(.995)}
+  .btn:hover:not(:disabled),.quick-card:hover,.system-home-card:hover{transform:none}
+}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
