@@ -20,6 +20,20 @@ assert.equal(events.filter(item=>item.type==='STATUS_CHANGED').length,1);
 assert.equal(events.filter(item=>item.type==='DOCUMENT_REMOVED').length,1);
 assert.equal(events.find(item=>item.type==='REVISION_UPDATED').documentId,'a');
 
+// Código PW pode se repetir quando o Sistema é diferente. Mesmo no fallback de
+// catálogos legados sem ID, a comparação não pode fundir AMV e PARA-CHOQUE.
+const repeatedPrevious=[
+  {code:'FT-17.95.99.XX-630-1201',system_id:'amv',title:'Teste',revision:'0',approval_status:'Aprovado'},
+  {code:'FT-17.95.99.XX-630-1201',system_id:'para-choque',title:'Teste',revision:'0',approval_status:'Aprovado'}
+];
+const repeatedNext=[
+  {code:'FT-17.95.99.XX-630-1201',system_id:'amv',title:'Teste',revision:'A1',approval_status:'Aprovado'},
+  {code:'FT-17.95.99.XX-630-1201',system_id:'para-choque',title:'Teste',revision:'0',approval_status:'Aprovado'}
+];
+const repeatedEvents=diffCatalogs(repeatedPrevious,repeatedNext,{packageVersion:'2026.08.26',createdAt:'2026-08-26T15:00:00.000Z'});
+assert.deepEqual(repeatedEvents[0].summary,{newCount:0,revisionCount:1,statusCount:0,removedCount:0,totalChanges:1});
+assert.equal(repeatedEvents.filter(item=>item.type==='REVISION_UPDATED').length,1);
+
 const map=new Map();
 let dispatched=0;
 globalThis.localStorage={getItem:key=>map.has(key)?map.get(key):null,setItem:(key,value)=>map.set(key,String(value)),removeItem:key=>map.delete(key)};
