@@ -9,9 +9,20 @@ function description(){return role()==='ADMIN'?'Acesso administrativo, documento
 function setText(node,value){if(node&&node.textContent!==value)node.textContent=value;}
 function controllerRouteActive(){return isController()&&location.hash.startsWith('#/controller-updates')}
 
+function clearCompetingActiveNav(controllerButton){
+  const nav=controllerButton.closest('.desktop-nav,.mobile-bottom-nav');
+  if(!nav)return;
+  nav.querySelectorAll('.nav-btn.active,.mobile-nav-btn.active').forEach(button=>{
+    if(button===controllerButton)return;
+    button.classList.remove('active');
+    button.removeAttribute('aria-current');
+  });
+}
+
 function syncControllerNavState(){
   const active=controllerRouteActive();
   document.querySelectorAll('[data-controller-updates]').forEach(button=>{
+    if(active)clearCompetingActiveNav(button);
     button.classList.toggle('active',active);
     if(active)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
   });
