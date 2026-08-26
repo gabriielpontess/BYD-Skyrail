@@ -60,25 +60,14 @@ function refineControllerNav(){
   });
 }
 
-function refineRolePresentation(){
+function markRoleForStyling(){
+  // role-ux.js é o único proprietário dos textos de perfil/permissão. Esta camada
+  // apenas expõe a role no <html> para CSS, evitando dois MutationObservers
+  // escreverem textContent no mesmo nó e entrarem em loop.
   const current=role();
-  document.documentElement.dataset.bydRole=current;
-  const label=current==='ADMIN'?'Administrador':current==='CONTROLLER'?'Controller documental':'Usuário';
-  const header=$('#header-user-role');
-  if(header&&header.textContent!==label)header.textContent=label;
+  if(document.documentElement.dataset.bydRole!==current)document.documentElement.dataset.bydRole=current;
   const access=$('.access-card .access-role');
-  if(access){
-    access.dataset.role=current;
-    const title=access.querySelector('strong');
-    const description=access.querySelector('p');
-    const copy=current==='ADMIN'
-      ?'Acesso administrativo, documentos, usuários e auditoria.'
-      :current==='CONTROLLER'
-        ?'Pode consultar documentos e importar atualizações documentais neste dispositivo.'
-        :'Acesso de consulta a documentos, pesquisa, filtros e viewer.';
-    if(title&&title.textContent!==label)title.textContent=label;
-    if(description&&description.textContent!==copy)description.textContent=copy;
-  }
+  if(access&&access.dataset.role!==current)access.dataset.role=current;
 }
 
 function refineEmptyStates(){
@@ -110,7 +99,7 @@ function enhance(){
   bindUserMenu();
   refineNavigation();
   refineControllerNav();
-  refineRolePresentation();
+  markRoleForStyling();
   refineEmptyStates();
   refineTables();
   refineButtons();
