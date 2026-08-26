@@ -267,31 +267,42 @@ export class DocumentPackagerService{
     const pdfEntries=directory.filter(entry=>/\.pdf$/i.test(entry.path)&&!entry.path.endsWith('/'));
     if(!pdfEntries.length)throw new Error('O ZIP selecionado não contém arquivos PDF.');
 
-    const matched=[],unmatched=[],duplicateCodes=new Set(),duplicateFileNames=new Set(),seenCodes=new Set(),seenFiles=new Set(),revisionWarnings=[];
+    const matched=[],unmatched=[],unmatchedDetails=[],seenCodes=new Set(),seenFiles=new Set(),revisionWarnings=[];
+    const codeFiles=new Map(),fileOccurrences=new Map();
     for(let index=0;index<pdfEntries.length;index++){
       throwIfAborted(signal);
       const entry=pdfEntries[index];
+      const fileKey=fold(entry.fileName);
+      if(!fileOccurrences.has(fileKey))fileOccurrences.set(fileKey,[]);
+      fileOccurrences.get(fileKey).push({fileName:entry.fileName,path:entry.path});
       const result=matchPdfName(entry.path,master);
       onProgress?.({phase:'match',done:index+1,total:pdfEntries.length,name:entry.fileName});
-      if(!result){unmatched.push(entry.fileName);continue}
-      const key=result.record.normalizedCode,fileKey=fold(entry.fileName);
-      if(seenCodes.has(key)){duplicateCodes.add(result.record.code);continue}
-      if(seenFiles.has(fileKey)){duplicateFileNames.add(entry.fileName);continue}
+      if(!result){unmatched.push(entry.fileName);unmatchedDetails.push({fileName:entry.fileName,path:entry.path});continue}
+      const key=result.record.normalizedCode;
+      if(!codeFiles.has(key))codeFiles.set(key,{code:result.record.code,files:[]});
+      codeFiles.get(key).files.push({fileName:entry.fileName,path:entry.path,fileRevision:result.revision||'',masterRevision:text(result.record.revision)});
+      if(seenCodes.has(key))continue;
+      if(seenFiles.has(fileKey))continue;
       seenCodes.add(key);seenFiles.add(fileKey);
       const masterRevision=text(result.record.revision);
       const revision=result.revision||masterRevision||'0';
-      if(result.revision&&masterRevision&&fold(result.revision)!==fold(masterRevision))revisionWarnings.push({code:result.record.code,fileRevision:result.revision,masterRevision});
+      if(result.revision&&masterRevision&&fold(result.revision)!==fold(masterRevision))revisionWarnings.push({code:result.record.code,fileRevision:result.revision,masterRevision,fileName:entry.fileName,path:entry.path,system:result.record.system||''});
       matched.push({...entry,record:result.record,revision});
     }
 
-    const missingMaster=master.filter(record=>!seenCodes.has(record.normalizedCode)).map(record=>record.code);
+    const duplicateCodeDetails=[...codeFiles.values()].filter(item=>item.files.length>1);
+    const duplicateCodes=duplicateCodeDetails.map(item=>item.code);
+    const duplicateFileNameDetails=[...fileOccurrences.entries()].filter(([,files])=>files.length>1).map(([fileName,files])=>({fileName,files}));
+    const duplicateFileNames=duplicateFileNameDetails.map(item=>item.fileName);
+    const missingMasterDetails=master.filter(record=>!seenCodes.has(record.normalizedCode)).map(record=>({code:record.code,system:record.system||'',revision:record.revision||'',description:record.description||''}));
+    const missingMaster=missingMasterDetails.map(record=>record.code);
     const missingSystem=matched.filter(item=>!text(item.record.system)).map(item=>item.record.code);
     const missingStatus=matched.filter(item=>!text(item.record.status)).map(item=>item.record.code);
     const unknownTypePrefixes=[...new Set(matched.filter(item=>/Tipo não mapeado/.test(inferDocumentType(item.record.code))).map(item=>fold(item.record.code).split('-')[0]||'—'))];
     const systemCounts={};
     for(const item of matched){const name=item.record.system||'Sem sistema';systemCounts[name]=(systemCounts[name]||0)+1}
     const estimatedOutputBytes=matched.reduce((sum,item)=>sum+Number(item.originalSize||item.compressedSize||0),0)+2*1024*1024;
-    const canGenerate=!unmatched.length&&!duplicateCodes.size&&!duplicateFileNames.size&&!missingMaster.length;
+    const canGenerate=!unmatched.length&&!duplicateCodes.length&&!duplicateFileNames.length&&!missingMaster.length;
     const warnings=[];
     if(revisionWarnings.length)warnings.push(`${revisionWarnings.length} revisão(ões) divergem entre nome do PDF e lista mestra.`);
     if(missingSystem.length)warnings.push(`${missingSystem.length} documento(s) estão sem SISTEMA.`);
@@ -300,7 +311,8 @@ export class DocumentPackagerService{
 
     return{
       canGenerate,sourceZipBytes:pdfZipFile.size,masterCount:master.length,pdfCount:pdfEntries.length,matchedCount:matched.length,matched,
-      unmatched,duplicateCodes:[...duplicateCodes],duplicateFileNames:[...duplicateFileNames],missingMaster,revisionWarnings,missingSystem,missingStatus,unknownTypePrefixes,systemCounts,warnings,
+      unmatched,unmatchedDetails,duplicateCodes,duplicateCodeDetails,duplicateFileNames,duplicateFileNameDetails,missingMaster,missingMasterDetails,
+      revisionWarnings,missingSystem,missingStatus,unknownTypePrefixes,systemCounts,warnings,
       estimatedOutputBytes,recommendedFreeBytes:Math.ceil(estimatedOutputBytes*1.25),requiresStreamingOutput:pdfZipFile.size>=512*1024*1024||estimatedOutputBytes>=512*1024*1024
     };
   }
