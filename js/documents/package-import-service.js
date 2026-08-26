@@ -107,6 +107,7 @@ export class PackageImportService{
         const bytes=await packageStagingService.get(runId,source);
         if(!bytes)throw new Error(`Arquivo ausente durante commit: ${doc.file}`);
         await documentFileService.putBytes(doc,bytes);
+        await packageStagingService.remove(runId,source);
         done++;onProgress?.({phase:'write',done,total:activeDocs.length,code:doc.code});
       }
       await documentRepository.replace(nextCatalog);
