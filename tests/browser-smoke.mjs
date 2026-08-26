@@ -178,15 +178,12 @@ async function main(){
   await waitFor(`document.querySelector('[data-controller-updates]')`,{label:'nav Atualizações CONTROLLER'});
   assert.equal(await evaluate(`document.querySelector('.desktop-nav [data-nav="audit"]')===null`),true,'CONTROLLER não pode receber Auditoria');
 
-  // Regressão visual dos vídeos: links dos cards não podem quebrar palavra por palavra.
   const quickLinksOk=await evaluate(`[...document.querySelectorAll('.quick-link')].every(el=>getComputedStyle(el).whiteSpace==='nowrap'&&el.getBoundingClientRect().height<30)`);
   assert.equal(quickLinksOk,true,'Ação dos quick cards não pode quebrar em várias linhas');
 
-  // Catálogo local deve adaptar as células ao container sem texto vazar.
   const catalogOverflowOk=await evaluate(`(()=>{const host=document.createElement('div');host.style.width='470px';host.style.position='absolute';host.style.left='-10000px';host.innerHTML='<div class="local-catalog-grid"><span><b>111</b><small>Documentos</small></span><span><b>2026.08.25-073546</b><small>Versão do catálogo</small></span><span><b>25/08/2026, 07:35</b><small>Última atualização</small></span><span><b>Atualizado</b><small>Status</small></span></div>';document.body.append(host);const cells=[...host.querySelectorAll('.local-catalog-grid>span')];const ok=cells.every(cell=>cell.scrollWidth<=cell.clientWidth+1)&&cells.every(cell=>cell.getBoundingClientRect().width>=175);host.remove();return ok})()`);
   assert.equal(catalogOverflowOk,true,'Resumo do catálogo não pode criar células estreitas com overflow');
 
-  // Somente uma aba pode ficar selecionada: reproduz Home + Atualizações do print.
   await click('.desktop-nav [data-controller-updates]');
   await waitFor(`location.hash.includes('/controller-updates')&&document.querySelector('.controller-update-card')`,{label:'Atualizações CONTROLLER'});
   await assertResponsive('Atualizações CONTROLLER');
@@ -197,17 +194,19 @@ async function main(){
   const activeHome=await evaluate(`(()=>{const active=[...document.querySelectorAll('.desktop-nav .nav-btn.active')];return {count:active.length,isHome:active[0]?.dataset.nav==='home'}})()`);
   assert.deepEqual(activeHome,{count:1,isHome:true},'Home deve voltar a ser a única aba ativa');
 
-  // Regressão do scroll da tela de Documentos: o overscroll horizontal da tabela
-  // não pode bloquear a rolagem vertical quando o ponteiro está sobre a listagem.
+  // Testa o mesmo padrão de scroll da tabela, isolado do renderer local-first para
+  // que a fixture não seja substituída durante a medição.
   await click('.desktop-nav [data-nav="documents"]');
   await waitFor(`location.hash.includes('/documents')`,{label:'rota Documentos'});
-  await evaluate(`(()=>{const page=document.querySelector('#page');page.innerHTML='<div style="height:80px"></div><div id="wheel-probe" class="doc-table-wrap"><div style="width:1800px;height:420px"></div></div><div style="height:1800px"></div>';window.scrollTo(0,0);return true})()`);
+  await evaluate(`(()=>{const app=document.querySelector('#app');app.style.display='none';const host=document.createElement('main');host.id='wheel-host';host.style.cssText='min-height:2400px;padding:100px 80px;background:#f4f7fb';host.innerHTML='<div id="wheel-probe" class="doc-table-wrap" style="background:white"><div style="width:1800px;height:420px"></div></div><div style="height:1600px"></div>';document.body.append(host);window.scrollTo(0,0);return true})()`);
+  await waitFor(`document.querySelector('#wheel-probe')`,{label:'fixture de scroll'});
   const overscrollY=await evaluate(`getComputedStyle(document.querySelector('#wheel-probe')).overscrollBehaviorY`);
   assert.equal(overscrollY,'auto','Documentos deve permitir scroll chaining vertical');
   const probe=await evaluate(`(()=>{const r=document.querySelector('#wheel-probe').getBoundingClientRect();return{x:Math.round(r.left+Math.min(r.width/2,450)),y:Math.round(r.top+Math.min(r.height/2,250))}})()`);
   await cdp.send('Input.dispatchMouseEvent',{type:'mouseWheel',x:probe.x,y:probe.y,deltaX:0,deltaY:520});
   await sleep(180);
   assert.ok(await evaluate(`window.scrollY`)>100,'Wheel sobre a listagem de Documentos deve rolar a página, não ficar preso na tabela');
+  await evaluate(`(()=>{document.querySelector('#wheel-host')?.remove();const app=document.querySelector('#app');app.style.display='';window.scrollTo(0,0);return true})()`);
   await click('.desktop-nav [data-nav="home"]');
   await waitFor(`document.querySelector('.hero')`,{label:'Home após teste de scroll'});
 
