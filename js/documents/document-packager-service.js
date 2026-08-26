@@ -1,4 +1,4 @@
-import { strToU8, Unzip, UnzipInflate, Zip, ZipPassThrough } from 'fflate';
+import { Inflate, strToU8, Zip, ZipPassThrough } from 'fflate';
 import * as XLSX from 'xlsx';
 
 const fold=value=>String(value??'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ');
@@ -280,6 +280,64 @@ async function chooseOutputFile(suggestedName){
   return globalThis.showSaveFilePicker({suggestedName,types:[{description:'Pacote BYD Skyrail',accept:{'application/zip':['.zip']}}]});
 }
 
+async function localDataBounds(file,item){
+  const header=new Uint8Array(await file.slice(item.localOffset,item.localOffset+30).arrayBuffer());
+  if(header.length<30)throw new Error(`Cabeçalho local incompleto para ${item.fileName}.`);
+  const view=new DataView(header.buffer,header.byteOffset,header.byteLength);
+  if(u32(view,0)!==0x04034b50)throw new Error(`Cabeçalho local inválido para ${item.fileName}.`);
+  const nameLength=u16(view,26),extraLength=u16(view,28);
+  const start=item.localOffset+30+nameLength+extraLength;
+  const end=start+Number(item.compressedSize||0);
+  if(start<0||end>file.size||end<start)throw new Error(`Dados fora dos limites do ZIP para ${item.fileName}.`);
+  return{start,end};
+}
+
+async function copyValidatedEntry(file,item,zip,sink,signal,onChunk){
+  throwIfAborted(signal);
+  if(item.compression!==0&&item.compression!==8)throw new Error(`Método de compressão ${item.compression} não suportado em ${item.fileName}.`);
+  const {start,end}=await localDataBounds(file,item);
+  const outputEntry=new ZipPassThrough(`documents/${item.packagedFile}`);
+  zip.add(outputEntry);
+  const reader=file.slice(start,end).stream().getReader();
+  let inputBytes=0,finished=false;
+  try{
+    if(item.compression===0){
+      while(true){
+        throwIfAborted(signal);
+        const {value,done}=await reader.read();
+        if(done)break;
+        const chunk=value||new Uint8Array();
+        inputBytes+=chunk.length;
+        outputEntry.push(chunk,false);
+        onChunk?.(chunk.length);
+        await sink.drain();
+      }
+      outputEntry.push(new Uint8Array(),true);
+      finished=true;
+      await sink.drain();
+    }else{
+      const inflater=new Inflate();
+      inflater.ondata=(data,final)=>{outputEntry.push(data||new Uint8Array(),Boolean(final));if(final)finished=true};
+      while(true){
+        throwIfAborted(signal);
+        const {value,done}=await reader.read();
+        if(done)break;
+        const chunk=value||new Uint8Array();
+        inputBytes+=chunk.length;
+        inflater.push(chunk,false);
+        onChunk?.(chunk.length);
+        await sink.drain();
+      }
+      inflater.push(new Uint8Array(),true);
+      await sink.drain();
+    }
+    if(inputBytes!==Number(item.compressedSize||0))throw new Error(`Leitura incompleta de ${item.fileName}: ${inputBytes} de ${item.compressedSize} bytes.`);
+    if(!finished)throw new Error(`Descompressão não finalizada para ${item.fileName}.`);
+  }finally{
+    try{await reader.cancel()}catch{}
+  }
+}
+
 export class DocumentPackagerService{
   supportsLargePackage(){return typeof globalThis.showSaveFilePicker==='function'}
 
@@ -322,20 +380,22 @@ export class DocumentPackagerService{
     const missingSystem=matched.filter(item=>!text(item.record.system)).map(item=>item.record.code);
     const missingStatus=matched.filter(item=>!text(item.record.status)).map(item=>item.record.code);
     const unknownTypePrefixes=[...new Set(matched.filter(item=>/Tipo não mapeado/.test(inferDocumentType(item.record.code))).map(item=>fold(item.record.code).split('-')[0]||'—'))];
+    const unsupportedCompression=matched.filter(item=>item.compression!==0&&item.compression!==8).map(item=>({fileName:item.fileName,path:item.path,compression:item.compression}));
     const systemCounts={};
     for(const item of matched){const name=item.record.system||'Sem sistema';systemCounts[name]=(systemCounts[name]||0)+1}
     const estimatedOutputBytes=matched.reduce((sum,item)=>sum+Number(item.originalSize||item.compressedSize||0),0)+2*1024*1024;
-    const canGenerate=!unmatched.length&&!duplicateCodes.length&&!duplicateFileNames.length&&!missingMaster.length;
+    const canGenerate=!unmatched.length&&!duplicateCodes.length&&!duplicateFileNames.length&&!missingMaster.length&&!unsupportedCompression.length;
     const warnings=[];
     if(revisionWarnings.length)warnings.push(`${revisionWarnings.length} revisão(ões) divergem entre nome do PDF e lista mestra.`);
     if(missingSystem.length)warnings.push(`${missingSystem.length} documento(s) estão sem SISTEMA.`);
     if(missingStatus.length)warnings.push(`${missingStatus.length} documento(s) estão sem STATUS.`);
     if(unknownTypePrefixes.length)warnings.push(`Prefixos sem tipo mapeado: ${unknownTypePrefixes.join(', ')}.`);
+    if(unsupportedCompression.length)warnings.push(`${unsupportedCompression.length} PDF(s) usam método de compressão ZIP não suportado.`);
 
     return{
       canGenerate,sourceZipBytes:pdfZipFile.size,masterCount:master.length,pdfCount:pdfEntries.length,matchedCount:matched.length,matched,
       unmatched,unmatchedDetails,duplicateCodes,duplicateCodeDetails,duplicateFileNames,duplicateFileNameDetails,missingMaster,missingMasterDetails,
-      revisionWarnings,missingSystem,missingStatus,unknownTypePrefixes,systemCounts,warnings,
+      revisionWarnings,missingSystem,missingStatus,unknownTypePrefixes,unsupportedCompression,systemCounts,warnings,
       estimatedOutputBytes,recommendedFreeBytes:Math.ceil(estimatedOutputBytes*1.25),requiresStreamingOutput:pdfZipFile.size>=512*1024*1024||estimatedOutputBytes>=512*1024*1024
     };
   }
@@ -350,43 +410,25 @@ export class DocumentPackagerService{
     throwIfAborted(signal);
     const writable=await handle.createWritable();
     const sink=createDiskSink(writable);
-    let sourceReader=null;
     try{
       const zip=new Zip((error,data)=>{if(error)sink.fail(error);else sink.write(data)});
       addTextEntry(zip,'manifest.json',JSON.stringify(metadata.manifest,null,2));
       addTextEntry(zip,'documents.json',JSON.stringify(metadata.catalog,null,2));
-      const matchedByPath=new Map(analysis.matched.map(item=>[normalizePath(item.path),item]));
-      let completed=0,currentCode='',sourceBytes=0;
-      const unzip=new Unzip(entry=>{
-        const path=normalizePath(entry.name),item=matchedByPath.get(path);
-        if(item){
-          currentCode=item.record.code;
-          const outputEntry=new ZipPassThrough(`documents/${item.packagedFile}`);zip.add(outputEntry);
-          entry.ondata=(error,data,final)=>{
-            if(error){sink.fail(error);return}
-            outputEntry.push(data||new Uint8Array(),Boolean(final));
-            if(final){completed++;onProgress?.({phase:'generate',done:completed,total:analysis.matched.length,code:item.record.code,sourceBytes,totalSourceBytes:pdfZipFile.size,writtenBytes:sink.bytesWritten()})}
-          };
-          entry.start();
-        }else{
-          entry.ondata=error=>{if(error)sink.fail(error)};
-          try{entry.start()}catch(error){sink.fail(error)}
-        }
-      });
-      unzip.register(UnzipInflate);
-      sourceReader=pdfZipFile.stream().getReader();
-      while(true){
+      let completed=0,processedBytes=0;
+      const totalSourceBytes=analysis.matched.reduce((sum,item)=>sum+Number(item.compressedSize||0),0)||1;
+      for(const item of analysis.matched){
         throwIfAborted(signal);
-        const {value,done}=await sourceReader.read();
-        const chunk=value||new Uint8Array();sourceBytes+=chunk.length;unzip.push(chunk,done);await sink.drain();
-        onProgress?.({phase:'stream',done:completed,total:analysis.matched.length,code:currentCode,sourceBytes,totalSourceBytes:pdfZipFile.size,writtenBytes:sink.bytesWritten()});
-        if(done)break;
+        await copyValidatedEntry(pdfZipFile,item,zip,sink,signal,bytes=>{
+          processedBytes+=bytes;
+          onProgress?.({phase:'stream',done:completed,total:analysis.matched.length,code:item.record.code,sourceBytes:processedBytes,totalSourceBytes,writtenBytes:sink.bytesWritten()});
+        });
+        completed++;
+        onProgress?.({phase:'generate',done:completed,total:analysis.matched.length,code:item.record.code,sourceBytes:processedBytes,totalSourceBytes,writtenBytes:sink.bytesWritten()});
       }
       if(completed!==analysis.matched.length)throw new Error(`Geração incompleta: ${completed} de ${analysis.matched.length} PDFs foram processados.`);
       zip.end();await sink.drain();await sink.close();
       return{fileName:metadata.fileName,packageVersion:metadata.packageVersion,documentCount:metadata.documents.length,systemCount:metadata.systems.length,revisionWarnings:analysis.revisionWarnings,outputBytes:sink.bytesWritten(),saved:true};
     }catch(error){
-      try{await sourceReader?.cancel()}catch{}
       await sink.abort();
       if(error?.name==='AbortError')throw error;
       throw new Error(`Falha ao gerar pacote grande: ${error?.message||error}`);
