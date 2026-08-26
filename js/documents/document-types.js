@@ -12,7 +12,15 @@ export const DOCUMENT_TYPE_BY_PREFIX={
   MM:'Manual de manutenção',
   PF:'Plano de Inspeção e Teste em Fábrica',
   PN:'Procedimento de montagem',
-  PV:'Procedimento de movimentação e armazenagem'
+  PV:'Procedimento de movimentação e armazenagem',
+  PI:'Procedimento de Inspeção de Fábrica',
+  PL:'Procedimento de Teste de Instalação',
+  TR:'Plano de Treinamento',
+  MD:'Memorial Descritivo',
+  MO:'Manual de Operação',
+  PT:'Procedimento de Teste',
+  RT:'Relatório de Testes',
+  EM:'Especificação de Materiais'
 };
 
 export function documentPrefix(code){return fold(code).split('-')[0]||''}
