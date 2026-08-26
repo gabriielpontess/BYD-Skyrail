@@ -19,13 +19,15 @@ function validateCatalog(value,manifest){
   if(!value||typeof value!=='object'||!Array.isArray(value.documents))throw new Error('Catálogo documents.json inválido.');
   const schema=Number(value.schemaVersion||manifest.schemaVersion||1);
   if(schema>MAX_SCHEMA_VERSION)throw new Error(`Pacote incompatível: schemaVersion ${schema}.`);
-  const ids=new Set(),codes=new Set();
+  const ids=new Set(),documentKeys=new Set();
   for(const doc of value.documents){
     const id=String(doc.id||'').trim(),code=String(doc.code||'').trim(),title=String(doc.title||'').trim(),revision=String(doc.revision||'').trim(),file=String(doc.file||doc.file_path||'').trim();
+    const system=String(doc.system_id||doc.system_name||'').trim().toLocaleLowerCase('pt-BR');
     if(!id||!code||!title||!revision||!file)throw new Error('Há documento com campos obrigatórios ausentes no catálogo.');
     if(ids.has(id))throw new Error(`ID duplicado no catálogo: ${id}`);
-    if(codes.has(code.toLocaleLowerCase('pt-BR')))throw new Error(`Código duplicado no catálogo: ${code}`);
-    ids.add(id);codes.add(code.toLocaleLowerCase('pt-BR'));
+    const key=`${code.toLocaleLowerCase('pt-BR')}|${system}`;
+    if(documentKeys.has(key))throw new Error(`Código duplicado no mesmo sistema: ${code}`);
+    ids.add(id);documentKeys.add(key);
   }
   return value;
 }
