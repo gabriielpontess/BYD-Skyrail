@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const root=new URL('../',import.meta.url);
-const [index,localUx,viewer,roleUx,uxAdjustments,notificationsUx,api,css,sw,headers]=await Promise.all([
+const [index,app,localUx,viewer,roleUx,uxAdjustments,notificationsUx,api,css,sw,headers]=await Promise.all([
   readFile(new URL('../index.html',import.meta.url),'utf8'),
+  readFile(new URL('../js/app.js',import.meta.url),'utf8'),
   readFile(new URL('../js/local-documents-ux.js',import.meta.url),'utf8'),
   readFile(new URL('../js/documents/viewer-service.js',import.meta.url),'utf8'),
   readFile(new URL('../js/role-ux.js',import.meta.url),'utf8'),
@@ -26,6 +27,13 @@ assert.match(sw,/registration\.unregister\(\)/,'sw legado deve se autoaposentar 
 assert.doesNotMatch(sw,/addEventListener\('fetch'/,'kill switch não pode interceptar novos requests');
 assert.match(headers,/\/index\.html[\s\S]*Cache-Control: no-store/,'shell web não deve permanecer no cache HTTP');
 assert.match(headers,/\/sw\.js[\s\S]*Cache-Control: no-store/,'kill switch deve ser sempre revalidado');
+assert.doesNotMatch(app,/if \(state\.view === 'documents'\) return renderDocuments\(page\)/,'app legado não deve montar a tela Documentos');
+assert.match(app,/byd:render-local-documents/,'rota Documentos deve delegar explicitamente ao módulo local-first');
+assert.match(localUx,/document\.addEventListener\('byd:render-local-documents'/,'renderer local-first deve assumir a rota delegada');
+assert.match(localUx,/const PAGE_SIZE=100/,'lista documental deve limitar a quantidade de registros montados por página');
+assert.match(localUx,/visible\.slice\(start,start\+PAGE_SIZE\)/,'renderer deve paginar antes de criar o DOM');
+assert.match(localUx,/documentsMedia\.matches/,'renderer deve escolher somente um layout por viewport');
+assert.match(localUx,/isMobile\?mobileRows\(pageDocs,systemMap\):desktopRows\(pageDocs,systemMap\)/,'desktop e mobile não podem ser montados simultaneamente');
 assert.match(localUx,/<tr data-open-doc=/,'a linha inteira deve carregar data-open-doc');
 assert.match(localUx,/<article class="mobile-doc-card" data-open-doc=/,'o card móvel inteiro deve carregar data-open-doc');
 assert.match(localUx,/\['ADMIN','CONTROLLER'\]\.includes\(role\(\)\)/,'somente ADMIN e CONTROLLER podem importar');
