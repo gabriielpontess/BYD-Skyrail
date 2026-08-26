@@ -13,7 +13,7 @@ function parseJson(text,label){try{return JSON.parse(text)}catch{throw new Error
 function validateManifest(value){
   if(!value||typeof value!=='object')throw new Error('Manifesto do pacote inválido.');
   if(!String(value.packageVersion||'').trim())throw new Error('Manifesto sem packageVersion.');
-  return {packageVersion:String(value.packageVersion).trim(),createdAt:value.createdAt||null,catalogFile:String(value.catalogFile||DEFAULT_CATALOG).trim(),schemaVersion:Number(value.schemaVersion||1)};
+  return {packageVersion:String(value.packageVersion).trim(),createdAt:value.createdAt||null,catalogFile:String(value.catalogFile||DEFAULT_CATALOG).trim(),schemaVersion:Number(value.schemaVersion||1),contentBytes:Number(value.contentBytes||0),sourceZipBytes:Number(value.sourceZipBytes||0)};
 }
 function validateCatalog(value,manifest){
   if(!value||typeof value!=='object'||!Array.isArray(value.documents))throw new Error('Catálogo documents.json inválido.');
@@ -34,8 +34,7 @@ async function unzipToStaging(file,runId,onProgress){
   if(!(file instanceof File)||!/\.zip$/i.test(file.name))throw new Error('Selecione um pacote .zip válido.');
   const textEntries=new Map();
   const staged=new Set();
-  const writes=[];
-  let entries=0;
+  let writeChain=Promise.resolve(),writeFailure=null,entries=0,sourceBytes=0;
   const unzip=new Unzip(entry=>{
     const name=String(entry.name||'').replace(/^\.\//,'');
     const chunks=[];let size=0;
@@ -43,20 +42,37 @@ async function unzipToStaging(file,runId,onProgress){
       if(error)throw error;
       chunks.push(data);size+=data.length;
       if(!final)return;
-      entries++;onProgress?.({phase:'extract',entries,name});
+      entries++;
       const bytes=concat(chunks,size);
-      if(name===MANIFEST||name.endsWith('/'+MANIFEST)||name===DEFAULT_CATALOG||name.endsWith('/'+DEFAULT_CATALOG)) textEntries.set(name,strFromU8(bytes));
-      else if(/^documents\/.+\.pdf$/i.test(name)){staged.add(name);writes.push(packageStagingService.put(runId,name,bytes));}
+      if(name===MANIFEST||name.endsWith('/'+MANIFEST)||name===DEFAULT_CATALOG||name.endsWith('/'+DEFAULT_CATALOG)){
+        textEntries.set(name,strFromU8(bytes));
+        onProgress?.({phase:'extract',entries,name,sourceBytes,totalSourceBytes:file.size});
+      }else if(/^documents\/.+\.pdf$/i.test(name)){
+        staged.add(name);
+        writeChain=writeChain.then(()=>packageStagingService.put(runId,name,bytes)).then(()=>{onProgress?.({phase:'extract',entries,name,sourceBytes,totalSourceBytes:file.size})}).catch(error=>{writeFailure=error});
+      }
     };
     entry.start();
   });
   unzip.register(UnzipInflate);
   const reader=file.stream().getReader();
   try{
-    while(true){const {value,done}=await reader.read();unzip.push(value||new Uint8Array(),done);if(done)break;}
-    await Promise.all(writes);
+    while(true){
+      const {value,done}=await reader.read();
+      const chunk=value||new Uint8Array();sourceBytes+=chunk.length;
+      unzip.push(chunk,done);
+      await writeChain;
+      if(writeFailure)throw writeFailure;
+      if(done)break;
+    }
+    await writeChain;
+    if(writeFailure)throw writeFailure;
     return {textEntries,staged};
-  }catch(error){await packageStagingService.clear(runId);throw new Error(`Falha ao extrair pacote: ${error?.message||error}`)}
+  }catch(error){
+    try{await reader.cancel()}catch{}
+    await packageStagingService.clear(runId);
+    throw new Error(`Falha ao extrair pacote: ${error?.message||error}`);
+  }
 }
 
 export class PackageImportService{
@@ -73,7 +89,7 @@ export class PackageImportService{
       const active=rawCatalog.documents.filter(doc=>String(doc.status||'active').toLowerCase()==='active'&&doc.active!==false);
       const missing=active.filter(doc=>!extracted.staged.has(`documents/${doc.file||doc.file_path}`));
       if(missing.length)throw new Error(`Pacote incompleto: ${missing.length} PDF(s) referenciado(s) não foram encontrados.`);
-      return {runId,manifest,rawCatalog,staged:extracted.staged,documentCount:rawCatalog.documents.length,packageSize:file.size};
+      return {runId,manifest,rawCatalog,staged:extracted.staged,documentCount:rawCatalog.documents.length,packageSize:file.size,contentBytes:manifest.contentBytes};
     }catch(error){await packageStagingService.clear(runId);throw error}
   }
 
@@ -95,9 +111,7 @@ export class PackageImportService{
       }
       await documentRepository.replace(nextCatalog);
       const currentDocuments=await documentRepository.getAll({includeInactive:true});
-      try{
-        notificationService.recordPackage(previousDocuments,currentDocuments,{packageVersion:manifest.packageVersion,createdAt:nextCatalog.generatedAt});
-      }catch(error){console.warn('[BYD Skyrail] Não foi possível registrar notificações locais:',error)}
+      try{notificationService.recordPackage(previousDocuments,currentDocuments,{packageVersion:manifest.packageVersion,createdAt:nextCatalog.generatedAt})}catch(error){console.warn('[BYD Skyrail] Não foi possível registrar notificações locais:',error)}
       await packageStagingService.clear(runId);
       return await documentRepository.info();
     }catch(error){
