@@ -101,6 +101,24 @@ function refineAuditTables(){
   });
 }
 
+function refineAuditErrorState(){
+  if(!location.hash.startsWith('#/audit'))return;
+  const page=$('#page');if(!page)return;
+  const error=$('.login-error',page);
+  if(!error)return;
+  const loading=$('.empty-state',page);
+  if(loading&&/carregando/i.test(loading.textContent||''))loading.remove();
+  const retry=$('[data-refresh]',page);
+  if(!retry||retry.dataset.auditRetryBound==='1')return;
+  retry.dataset.auditRetryBound='1';
+  retry.textContent='Tentar novamente';
+  retry.onclick=()=>{
+    const target=location.hash||'#/audit';
+    location.hash='#/home';
+    setTimeout(()=>{location.hash=target},0);
+  };
+}
+
 function refineButtons(){
   $$('button').forEach(button=>{
     if(!button.hasAttribute('type'))button.type='button';
@@ -135,6 +153,7 @@ function enhance(){
   refineEmptyStates();
   refineTables();
   refineAuditTables();
+  refineAuditErrorState();
   refineButtons();
   syncModalState();
 }
