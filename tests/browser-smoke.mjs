@@ -1,0 +1,238 @@
+import assert from 'node:assert/strict';
+import { access, mkdtemp, rm } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+
+const HOST='127.0.0.1';
+const PORT=4173;
+const BASE=`http://${HOST}:${PORT}/`;
+const DEBUG_PORT=39000+Math.floor(Math.random()*1000);
+const isWindows=process.platform==='win32';
+let preview=null,chrome=null,profileDir=null;
+
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const withTimeout=(promise,ms,label='operação')=>Promise.race([
+  promise,
+  new Promise((_,reject)=>setTimeout(()=>reject(new Error(`Timeout em ${label} após ${ms}ms`)),ms))
+]);
+
+async function exists(path){
+  if(!path)return false;
+  try{await access(path,fsConstants.X_OK);return true}catch{return false}
+}
+
+async function findChrome(){
+  const candidates=[process.env.CHROME_PATH,process.env.GOOGLE_CHROME_BIN];
+  if(process.platform==='win32'){
+    const roots=[process.env.PROGRAMFILES,process.env['PROGRAMFILES(X86)'],process.env.LOCALAPPDATA].filter(Boolean);
+    for(const root of roots)candidates.push(join(root,'Google','Chrome','Application','chrome.exe'));
+  }else if(process.platform==='darwin'){
+    candidates.push('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');
+  }else{
+    candidates.push('/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium','/usr/bin/chromium-browser');
+    for(const command of ['google-chrome','google-chrome-stable','chromium','chromium-browser']){
+      const result=spawnSync('which',[command],{encoding:'utf8'});
+      if(result.status===0)candidates.push(result.stdout.trim());
+    }
+  }
+  for(const candidate of candidates)if(await exists(candidate))return candidate;
+  throw new Error('Google Chrome/Chromium não encontrado. Defina CHROME_PATH apontando para o executável do Chrome.');
+}
+
+async function waitHttp(url,timeout=15000){
+  const deadline=Date.now()+timeout;
+  while(Date.now()<deadline){
+    try{const response=await fetch(url);if(response.ok)return}catch{}
+    await sleep(120);
+  }
+  throw new Error(`Servidor local não respondeu em ${url}`);
+}
+
+class CDP{
+  constructor(url){this.url=url;this.seq=0;this.pending=new Map();this.ws=null}
+  async connect(){
+    this.ws=new WebSocket(this.url);
+    await withTimeout(new Promise((resolve,reject)=>{
+      this.ws.addEventListener('open',resolve,{once:true});
+      this.ws.addEventListener('error',reject,{once:true});
+    }),5000,'conexão CDP');
+    this.ws.addEventListener('message',event=>{
+      let message;try{message=JSON.parse(event.data)}catch{return}
+      if(!message.id)return;
+      const item=this.pending.get(message.id);if(!item)return;
+      this.pending.delete(message.id);clearTimeout(item.timer);
+      if(message.error)item.reject(new Error(`${item.method}: ${message.error.message}`));else item.resolve(message.result);
+    });
+  }
+  send(method,params={},timeout=5000){
+    const id=++this.seq;
+    return new Promise((resolve,reject)=>{
+      const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error(`CDP ${method} sem resposta em ${timeout}ms (possível trava da thread principal)`))},timeout);
+      this.pending.set(id,{resolve,reject,timer,method});
+      this.ws.send(JSON.stringify({id,method,params}));
+    });
+  }
+  close(){try{this.ws?.close()}catch{}}
+}
+
+async function debuggerTarget(){
+  const deadline=Date.now()+10000;
+  while(Date.now()<deadline){
+    try{
+      const targets=await (await fetch(`http://${HOST}:${DEBUG_PORT}/json/list`)).json();
+      const target=targets.find(item=>item.type==='page'&&item.webSocketDebuggerUrl);
+      if(target)return target;
+    }catch{}
+    await sleep(100);
+  }
+  throw new Error('Chrome abriu, mas o endpoint de depuração não ficou disponível.');
+}
+
+function cachedMember(role){
+  return {
+    display_name:`Teste ${role}`,
+    role,
+    user_id:`00000000-0000-4000-8000-${role==='ADMIN'?'000000000001':role==='CONTROLLER'?'000000000002':'000000000003'}`,
+    user:{email:`${role.toLowerCase()}@local.test`,user_metadata:{cargo:role==='CONTROLLER'?'Controller documental':role}}
+  };
+}
+
+async function main(){
+  const chromePath=await findChrome();
+  console.log(`[browser-smoke] Chrome: ${chromePath}`);
+
+  preview=spawn(isWindows?'npx.cmd':'npx',['vite','preview','--host',HOST,'--port',String(PORT),'--strictPort'],{
+    cwd:new URL('../',import.meta.url),stdio:['ignore','pipe','pipe'],shell:false
+  });
+  preview.stdout.on('data',chunk=>process.stdout.write(`[vite] ${chunk}`));
+  preview.stderr.on('data',chunk=>process.stderr.write(`[vite] ${chunk}`));
+  await waitHttp(BASE);
+
+  profileDir=await mkdtemp(join(tmpdir(),'byd-skyrail-chrome-'));
+  const chromeArgs=[
+    `--remote-debugging-port=${DEBUG_PORT}`,
+    `--user-data-dir=${profileDir}`,
+    '--headless=new','--disable-gpu','--disable-background-networking','--disable-default-apps',
+    '--disable-extensions','--no-first-run','--no-default-browser-check','--window-size=1365,900','about:blank'
+  ];
+  if(process.platform==='linux')chromeArgs.unshift('--no-sandbox');
+  chrome=spawn(chromePath,chromeArgs,{stdio:['ignore','ignore','pipe']});
+  chrome.stderr.on('data',()=>{});
+
+  const target=await debuggerTarget();
+  const cdp=new CDP(target.webSocketDebuggerUrl);await cdp.connect();
+  await cdp.send('Page.enable');await cdp.send('Runtime.enable');await cdp.send('Emulation.setFocusEmulationEnabled',{enabled:true});
+
+  const seed=await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`
+    try{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get(){return false}})}catch{}
+    localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember('CONTROLLER'))) });
+    localStorage.setItem('byd-skyrail:systems-cache',JSON.stringify([{id:'sys-test',name:'SISTEMA TESTE',active:true}]));
+  `});
+
+  async function evaluate(expression,{timeout=3000,awaitPromise=true}={}){
+    const result=await cdp.send('Runtime.evaluate',{expression,awaitPromise,returnByValue:true,userGesture:true},timeout);
+    if(result.exceptionDetails)throw new Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text||'Erro JavaScript no navegador');
+    return result.result?.value;
+  }
+  async function waitFor(expression,{timeout=5000,label=expression}={}){
+    const deadline=Date.now()+timeout;
+    while(Date.now()<deadline){
+      try{if(await evaluate(`Boolean(${expression})`,{timeout:1200}))return}catch(error){if(/possível trava/.test(error.message))throw error}
+      await sleep(80);
+    }
+    throw new Error(`Elemento/condição não apareceu: ${label}`);
+  }
+  async function click(selector){
+    const ok=await evaluate(`(()=>{const el=document.querySelector(${JSON.stringify(selector)});if(!el)return false;el.click();return true})()`);
+    assert.equal(ok,true,`Elemento clicável ausente: ${selector}`);
+  }
+  async function assertResponsive(label){
+    const value=await evaluate(`new Promise(resolve=>setTimeout(()=>resolve('responsive'),60))`,{timeout:1500});
+    assert.equal(value,'responsive',`${label}: event loop não respondeu`);
+  }
+  async function setRole(nextRole){
+    await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember(nextRole)))});location.hash='#/home';location.reload()`);
+    await waitFor(`document.querySelector('.hero')`,{timeout:5000,label:`Home ${nextRole}`});
+    await assertResponsive(`boot ${nextRole}`);
+  }
+
+  await cdp.send('Page.navigate',{url:`${BASE}#/home`});
+  await waitFor(`document.querySelector('.hero')`,{timeout:7000,label:'Home CONTROLLER'});
+  await cdp.send('Page.removeScriptToEvaluateOnNewDocument',{identifier:seed.identifier});
+  await assertResponsive('boot CONTROLLER');
+
+  assert.equal(await evaluate(`document.querySelector('#header-user-role')?.textContent`),'Controller documental');
+  await waitFor(`document.querySelector('[data-controller-updates]')`,{label:'nav Atualizações CONTROLLER'});
+  assert.equal(await evaluate(`document.querySelector('.desktop-nav [data-nav="audit"]')===null`),true,'CONTROLLER não pode receber Auditoria');
+
+  for(let i=0;i<12;i++){
+    await click('.desktop-nav [data-nav="profile"]');
+    await waitFor(`location.hash.includes('/profile')&&document.querySelector('.profile-layout')`,{timeout:2200,label:`Perfil CONTROLLER iteração ${i+1}`});
+    await assertResponsive(`Perfil CONTROLLER iteração ${i+1}`);
+    const copy=await evaluate(`document.querySelector('.access-card .access-role p')?.textContent`);
+    assert.equal(copy,'Pode consultar e importar atualizações documentais neste dispositivo.','role-ux deve ser o único proprietário do texto CONTROLLER');
+
+    await evaluate(`(()=>{window.__bydMutationCount=0;window.__bydMutationObserver?.disconnect();window.__bydMutationObserver=new MutationObserver(records=>{window.__bydMutationCount+=records.filter(r=>r.type==='childList').length});window.__bydMutationObserver.observe(document.querySelector('#app'),{childList:true,subtree:true});return true})()`);
+    await assertResponsive(`settle Perfil CONTROLLER ${i+1}`);
+    await sleep(120);
+    const mutations=await evaluate(`window.__bydMutationCount`);
+    assert.ok(mutations<20,`Mutation storm detectada no Perfil CONTROLLER: ${mutations} mutações após estabilização`);
+
+    await click('.desktop-nav [data-nav="home"]');
+    await waitFor(`location.hash.includes('/home')&&document.querySelector('.hero')`,{timeout:2200,label:`Home após Perfil ${i+1}`});
+    await assertResponsive(`Home após Perfil ${i+1}`);
+  }
+
+  // Menu deve fechar fora e reabrir com um único clique.
+  await click('#user-menu-button');
+  assert.equal(await evaluate(`!document.querySelector('#user-menu').classList.contains('hidden')`),true,'menu deveria abrir');
+  await evaluate(`document.querySelector('#page').click()`);
+  assert.equal(await evaluate(`document.querySelector('#user-menu').classList.contains('hidden')`),true,'menu deveria fechar ao clicar fora');
+  await click('#user-menu-button');
+  assert.equal(await evaluate(`!document.querySelector('#user-menu').classList.contains('hidden')`),true,'menu deveria reabrir com um clique');
+  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+  assert.equal(await evaluate(`document.querySelector('#user-menu').classList.contains('hidden')`),true,'Escape deveria fechar menu');
+
+  // Sino deve possuir ação real e fechar com Escape.
+  await click('[data-notification-bell]');
+  await waitFor(`document.querySelector('#notification-panel')&&!document.querySelector('#notification-panel').classList.contains('hidden')`,{label:'central de notificações'});
+  await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+  assert.equal(await evaluate(`document.querySelector('#notification-panel').classList.contains('hidden')`),true,'Escape deveria fechar notificações');
+
+  // Tablet/mobile CONTROLLER: quatro itens e sem overflow global.
+  await cdp.send('Emulation.setDeviceMetricsOverride',{width:720,height:1024,deviceScaleFactor:1,mobile:true});
+  await evaluate(`window.dispatchEvent(new Event('resize'))`);await sleep(180);
+  const mobileCount=await evaluate(`document.querySelectorAll('.mobile-bottom-nav button').length`);
+  assert.equal(mobileCount,4,'CONTROLLER deve ter quatro itens na navegação móvel');
+  assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth+2`),true,'layout mobile não pode criar overflow horizontal global');
+  await cdp.send('Emulation.clearDeviceMetricsOverride');
+
+  // USER: sem áreas administrativas e Perfil responsivo.
+  await setRole('USER');
+  assert.equal(await evaluate(`document.querySelector('[data-controller-updates]')===null`),true,'USER não pode receber Atualizações');
+  assert.equal(await evaluate(`document.querySelector('.desktop-nav [data-nav="audit"]')===null`),true,'USER não pode receber Auditoria');
+  await click('.desktop-nav [data-nav="profile"]');
+  await waitFor(`document.querySelector('.profile-layout')`,{label:'Perfil USER'});await assertResponsive('Perfil USER');
+
+  // ADMIN: Auditoria disponível, sem rota Controller, Perfil responsivo.
+  await setRole('ADMIN');
+  assert.equal(await evaluate(`document.querySelector('.desktop-nav [data-nav="audit"]')!==null`),true,'ADMIN deve receber Auditoria');
+  assert.equal(await evaluate(`document.querySelector('[data-controller-updates]')===null`),true,'ADMIN não deve receber Atualizações de Controller');
+  await click('.desktop-nav [data-nav="profile"]');
+  await waitFor(`document.querySelector('.profile-layout')`,{label:'Perfil ADMIN'});await assertResponsive('Perfil ADMIN');
+
+  const bootErrors=await evaluate(`globalThis.__BYD_BOOT_DIAG?.errors||[]`);
+  assert.deepEqual(bootErrors,[],`Erros de bootstrap detectados: ${JSON.stringify(bootErrors)}`);
+
+  cdp.close();
+  console.log('browser-smoke.mjs: ok — Chrome real, navegação/perfis/menu/notificações/responsividade sem trava');
+}
+
+try{await main()}
+finally{
+  if(chrome&&!chrome.killed)chrome.kill('SIGTERM');
+  if(preview&&!preview.killed)preview.kill('SIGTERM');
+  if(profileDir)await rm(profileDir,{recursive:true,force:true}).catch(()=>{});
+}
