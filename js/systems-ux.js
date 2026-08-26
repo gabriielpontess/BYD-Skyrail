@@ -1,6 +1,4 @@
-import { listSystems } from './api.js';
-import { getClient } from './client.js';
-import { listLocal } from './db.js';
+import { documentRepository } from './documents/catalog-repository.js';
 
 const CACHE_KEY = 'byd-skyrail:systems-cache';
 let scheduled = false;
@@ -14,7 +12,6 @@ let docs = [];
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const esc = value => String(value ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
-const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function route() {
   const raw = location.hash.replace(/^#\/?/, '');
@@ -24,6 +21,17 @@ function route() {
 
 function cachedSystems() {
   try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '[]'); } catch { return []; }
+}
+
+function systemsFromDocuments(items = []) {
+  const map = new Map();
+  for (const doc of items) {
+    const id = String(doc.system_id || '').trim();
+    const name = String(doc.system_name || '').trim();
+    if (!id || !name || map.has(id)) continue;
+    map.set(id, { id, name, active: true });
+  }
+  return [...map.values()].sort((a,b) => a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'}));
 }
 
 async function waitForView(selector, timeoutMs = 10000) {
@@ -45,43 +53,32 @@ async function waitForView(selector, timeoutMs = 10000) {
   });
 }
 
-async function authenticatedSession() {
-  try {
-    const { data, error } = await getClient().auth.getSession();
-    if (error) return null;
-    return data?.session || null;
-  } catch {
-    return null;
+async function refreshData() {
+  try { docs = await documentRepository.getAll(); } catch (error) {
+    console.error('[BYD Skyrail] Falha ao ler documentos locais para Sistemas:', error);
+    docs = [];
   }
-}
-
-async function waitForAuthenticatedSession(timeoutMs = 12000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const session = await authenticatedSession();
-    if (session?.user) return session;
-    await sleep(120);
-  }
-  return null;
-}
-
-async function refreshData({ requireSession = false } = {}) {
-  try { docs = await listLocal(); } catch { docs = []; }
-  systems = cachedSystems();
-  if (!navigator.onLine) return { ok: true, source: 'cache' };
-
-  const session = requireSession ? await waitForAuthenticatedSession() : await authenticatedSession();
-  if (!session?.user) return { ok: false, reason: 'session' };
 
   try {
-    const fresh = await listSystems();
-    systems = fresh;
-    localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
-    return { ok: true, source: 'network' };
+    const localSystems = await documentRepository.getSystems({ includeInactive: true });
+    if (localSystems.length) {
+      systems = localSystems;
+      localStorage.setItem(CACHE_KEY, JSON.stringify(localSystems));
+      return { ok: true, source: 'catalog' };
+    }
   } catch (error) {
-    console.error('[BYD Skyrail] Falha ao carregar sistemas:', error);
-    return { ok: false, reason: 'query', error };
+    console.error('[BYD Skyrail] Falha ao ler sistemas do catálogo local:', error);
   }
+
+  const derived = systemsFromDocuments(docs);
+  if (derived.length) {
+    systems = derived;
+    localStorage.setItem(CACHE_KEY, JSON.stringify(derived));
+    return { ok: true, source: 'documents' };
+  }
+
+  systems = cachedSystems();
+  return { ok: true, source: systems.length ? 'cache' : 'empty' };
 }
 
 function selectedSystemId() {
@@ -117,7 +114,7 @@ function renderHomeSystems({ status = 'ready' } = {}) {
   }
 
   if (status === 'error') {
-    section.innerHTML = `<div class="systems-section-head"><div><span class="systems-kicker">Documentação por sistema</span><h2>Sistemas</h2><p>Não foi possível carregar os sistemas.</p></div><button type="button" class="btn btn-outline" data-retry-systems>Tentar novamente</button></div><div class="systems-empty"><span>Verifique a conexão e tente novamente.</span></div>`;
+    section.innerHTML = `<div class="systems-section-head"><div><span class="systems-kicker">Documentação por sistema</span><h2>Sistemas</h2><p>Não foi possível carregar os sistemas.</p></div><button type="button" class="btn btn-outline" data-retry-systems>Tentar novamente</button></div><div class="systems-empty"><span>Recarregue o catálogo local e tente novamente.</span></div>`;
     $('[data-retry-systems]', section)?.addEventListener('click', ensureHomeSystems);
     return true;
   }
@@ -127,7 +124,7 @@ function renderHomeSystems({ status = 'ready' } = {}) {
     <div class="systems-card-grid">${active.length ? active.map(system => {
       const count = docs.filter(doc => doc.system_id === system.id).length;
       return `<button type="button" class="system-home-card" data-system-id="${esc(system.id)}"><span class="system-card-mark" aria-hidden="true">${esc(system.name.slice(0,2).toUpperCase())}</span><span class="system-card-copy"><strong>${esc(system.name)}</strong><small>${count.toLocaleString('pt-BR')} documento(s)</small></span><span class="system-card-action">Ver documentos →</span></button>`;
-    }).join('') : `<div class="systems-empty"><strong>Nenhum sistema ativo cadastrado.</strong><span>Um ADMIN pode cadastrar sistemas antes de classificar os documentos.</span></div>`}</div>`;
+    }).join('') : `<div class="systems-empty"><strong>Nenhum sistema ativo no catálogo local.</strong><span>Importe um pacote documental com sistemas para preencher esta área.</span></div>`}</div>`;
 
   $('[data-all-systems]', section)?.addEventListener('click', () => goToDocuments());
   $$('[data-system-id]', section).forEach(button => button.addEventListener('click', () => goToDocuments(button.dataset.systemId)));
@@ -145,7 +142,7 @@ async function ensureHomeSystems() {
   try {
     if (!await waitForView('.hero')) return;
     renderHomeSystems({ status: 'loading' });
-    const result = await refreshData({ requireSession: true });
+    const result = await refreshData();
     if (route().name !== 'home') return;
     renderHomeSystems({ status: result.ok ? 'ready' : 'error' });
   } finally {
@@ -209,33 +206,47 @@ function systemName(id) {
 function applyDocumentSystemPresentation() {
   if (route().name !== 'documents') return;
   const selected = selectedSystemId();
-  const byCode = new Map(docs.map(doc => [String(doc.code || '').trim(), doc]));
-  let visibleCount = 0;
+  const byId = new Map(docs.map(doc => [String(doc.id), doc]));
+  const byCode = new Map();
+  for (const doc of docs) {
+    const code = String(doc.code || '').trim();
+    if (!byCode.has(code)) byCode.set(code, []);
+    byCode.get(code).push(doc);
+  }
+  const visibleIds = new Set();
+
+  const resolveDocument = node => {
+    const id = node.dataset.openDoc || node.querySelector?.('[data-open-doc]')?.dataset.openDoc;
+    if (id && byId.has(String(id))) return byId.get(String(id));
+    const code = $('.doc-code', node)?.textContent.trim() || '';
+    const candidates = byCode.get(code) || [];
+    return candidates.length === 1 ? candidates[0] : null;
+  };
 
   $$('.doc-table tbody tr').forEach(row => {
-    const code = $('.doc-code', row)?.textContent.trim() || '';
-    const doc = byCode.get(code);
+    const doc = resolveDocument(row);
     if (!doc) return;
     const cell = row.cells?.[2];
     const name = systemName(doc.system_id);
     const tag = cell ? $('.system-tag', cell) : null;
     if (cell && (!tag || tag.textContent.trim() !== name)) cell.innerHTML = `<span class="system-tag">${esc(name)}</span>`;
     const show = selected === 'ALL' || doc.system_id === selected;
-    if (row.hidden === show) row.hidden = !show;
-    if (show) visibleCount++;
+    row.hidden = !show;
+    if (show) visibleIds.add(String(doc.id));
   });
 
   $$('.mobile-doc-card').forEach(card => {
-    const code = $('.doc-code', card)?.textContent.trim() || '';
-    const doc = byCode.get(code);
+    const doc = resolveDocument(card);
     if (!doc) return;
     const tag = $('.system-tag', card);
     const name = systemName(doc.system_id);
     if (tag && tag.textContent.trim() !== name) tag.textContent = name;
     const show = selected === 'ALL' || doc.system_id === selected;
-    if (card.hidden === show) card.hidden = !show;
+    card.hidden = !show;
+    if (show) visibleIds.add(String(doc.id));
   });
 
+  const visibleCount = visibleIds.size;
   const count = $('.results-bar strong');
   if (count && selected !== 'ALL') {
     const label = `${visibleCount.toLocaleString('pt-BR')} documento(s) encontrado(s)`;
@@ -296,22 +307,10 @@ addEventListener('hashchange', () => {
   if (route().name === 'home') ensureHomeSystems();
   else if (route().name === 'documents') schedule();
 });
-addEventListener('online', () => {
-  if (route().name === 'home') ensureHomeSystems();
-  else if (route().name === 'documents') schedule();
-});
 addEventListener('load', () => {
   if (route().name === 'home') ensureHomeSystems();
   else if (route().name === 'documents') schedule();
 });
-
-try {
-  getClient().auth.onAuthStateChange((_event, session) => {
-    if (!session?.user) return;
-    if (route().name === 'home') ensureHomeSystems();
-    else if (route().name === 'documents') schedule();
-  });
-} catch {}
 
 if (route().name === 'home') ensureHomeSystems();
 else if (route().name === 'documents') schedule();
