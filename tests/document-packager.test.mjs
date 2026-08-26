@@ -83,4 +83,38 @@ assert.equal(catalog.documents[0].system_name,'AMV');
 assert.equal(catalog.documents[0].revision,'0');
 delete globalThis.showSaveFilePicker;
 
+const conflictWorkbook=XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(conflictWorkbook,XLSX.utils.aoa_to_sheet([
+  ['SISTEMA','FASE','CÓDIGO PW','DESCRIÇÃO','STATUS','REVISÃO'],
+  ['AMV','INSTALAÇÃO','FT-17.95.99.XX-630-1201','FORMULÁRIO CONFLITANTE','APROVADO','0'],
+  ['AMV','INSTALAÇÃO','DE-17.93.TD.KA-6AR-1501','DOCUMENTO AUSENTE','APROVADO','A']
+]),'Lista');
+const conflictMasterBytes=XLSX.write(conflictWorkbook,{bookType:'xlsx',type:'array'});
+const conflictZip=zipSync({
+  'A/FT-17.95.99.XX-630-1201-1.pdf':pdfBytes,
+  'B/FT-17.95.99.XX-630-1201-2.pdf':pdfBytes,
+  'C/FT-17.95.99.XX-630-1201-1.pdf':pdfBytes,
+  'PI-17.92.04.XX-630-1202-A.pdf':pdfBytes
+},{level:0});
+const conflictAnalysis=await service.analyze({
+  pdfZipFile:new File([conflictZip],'conflitos.zip',{type:'application/zip'}),
+  masterFile:new File([conflictMasterBytes],'conflitos.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+});
+assert.equal(conflictAnalysis.canGenerate,false);
+assert.equal(conflictAnalysis.unmatchedDetails.length,1);
+assert.equal(conflictAnalysis.unmatchedDetails[0].fileName,'PI-17.92.04.XX-630-1202-A.pdf');
+assert.equal(conflictAnalysis.missingMasterDetails.length,1);
+assert.equal(conflictAnalysis.missingMasterDetails[0].code,'DE-17.93.TD.KA-6AR-1501');
+assert.equal(conflictAnalysis.missingMasterDetails[0].system,'AMV');
+assert.equal(conflictAnalysis.duplicateCodeDetails.length,1);
+assert.equal(conflictAnalysis.duplicateCodeDetails[0].code,'FT-17.95.99.XX-630-1201');
+assert.equal(conflictAnalysis.duplicateCodeDetails[0].files.length,3);
+assert.equal(conflictAnalysis.duplicateFileNameDetails.length,1);
+assert.equal(conflictAnalysis.duplicateFileNameDetails[0].fileName,'FT-17.95.99.XX-630-1201-1.pdf');
+assert.equal(conflictAnalysis.duplicateFileNameDetails[0].files.length,2);
+assert.equal(conflictAnalysis.revisionWarnings.length,1);
+assert.equal(conflictAnalysis.revisionWarnings[0].fileName,'FT-17.95.99.XX-630-1201-1.pdf');
+assert.equal(conflictAnalysis.revisionWarnings[0].masterRevision,'0');
+assert.equal(conflictAnalysis.revisionWarnings[0].fileRevision,'1');
+
 console.log('document-packager tests passed');
