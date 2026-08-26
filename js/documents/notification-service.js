@@ -4,7 +4,8 @@ const MAX_NOTIFICATIONS=300;
 
 const text=value=>String(value??'').trim();
 const fold=value=>text(value).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
-const docKey=doc=>text(doc?.id)||fold(doc?.code);
+const systemKey=doc=>fold(doc?.system_id??doc?.system_name??'');
+const docKey=doc=>text(doc?.id)||`${fold(doc?.code)}|${systemKey(doc)}`;
 const statusOf=doc=>text(doc?.approval_status??doc?.source_status??'');
 
 function safeParse(raw,fallback){try{return JSON.parse(raw)}catch{return fallback}}
