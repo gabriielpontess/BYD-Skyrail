@@ -6,16 +6,42 @@ const formatBytes=value=>{const bytes=Number(value||0);if(!Number.isFinite(bytes
 const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const examples=(items,limit=6)=>items?.length?`${items.slice(0,limit).map(esc).join(', ')}${items.length>limit?'…':''}`:'—';
 
+function detailBlock(title,count,content,open=false){
+  if(!count)return'';
+  return `<details class="local-packager-details" ${open?'open':''}><summary>${esc(title)} <b>${Number(count).toLocaleString('pt-BR')}</b></summary><div class="local-packager-detail-body">${content}</div></details>`;
+}
+
 function renderAnalysis(report,analysis){
   const blocking=analysis.unmatched.length+analysis.duplicateCodes.length+analysis.duplicateFileNames.length+analysis.missingMaster.length;
   const systems=Object.entries(analysis.systemCounts).sort((a,b)=>b[1]-a[1]);
   const warnings=analysis.warnings.length?`<div class="local-packager-warning"><strong>Avisos</strong><ul>${analysis.warnings.map(item=>`<li>${esc(item)}</li>`).join('')}</ul></div>`:'';
   const problems=blocking?`<div class="local-packager-errors"><strong>Inconsistências bloqueantes</strong><ul>
-    ${analysis.unmatched.length?`<li><b>${analysis.unmatched.length}</b> PDF(s) sem Código PW correspondente. Exemplos: ${examples(analysis.unmatched)}</li>`:''}
-    ${analysis.missingMaster.length?`<li><b>${analysis.missingMaster.length}</b> registro(s) da lista mestra sem PDF. Exemplos: ${examples(analysis.missingMaster)}</li>`:''}
-    ${analysis.duplicateCodes.length?`<li>Códigos PW com mais de um PDF: ${examples(analysis.duplicateCodes)}</li>`:''}
-    ${analysis.duplicateFileNames.length?`<li>Nomes de PDF duplicados: ${examples(analysis.duplicateFileNames)}</li>`:''}
+    ${analysis.unmatched.length?`<li><b>${analysis.unmatched.length}</b> PDF(s) sem Código PW correspondente.</li>`:''}
+    ${analysis.missingMaster.length?`<li><b>${analysis.missingMaster.length}</b> registro(s) da lista mestra sem PDF.</li>`:''}
+    ${analysis.duplicateCodes.length?`<li><b>${analysis.duplicateCodes.length}</b> Código(s) PW possuem mais de um PDF.</li>`:''}
+    ${analysis.duplicateFileNames.length?`<li><b>${analysis.duplicateFileNames.length}</b> nome(s) de PDF aparecem mais de uma vez no ZIP.</li>`:''}
   </ul></div>`:`<div class="local-packager-ok"><strong>Validação estrutural aprovada.</strong> Todos os PDFs possuem correspondência única com a lista mestra.</div>`;
+
+  const unmatchedDetails=detailBlock('PDFs sem Código PW correspondente',analysis.unmatchedDetails?.length||analysis.unmatched.length,
+    `<div class="local-packager-detail-list">${(analysis.unmatchedDetails||analysis.unmatched.map(fileName=>({fileName,path:fileName}))).map(item=>`<div><strong>${esc(item.fileName)}</strong>${item.path&&item.path!==item.fileName?`<small>${esc(item.path)}</small>`:''}</div>`).join('')}</div>`,true);
+
+  const missingMasterDetails=detailBlock('Registros da lista mestra sem PDF',analysis.missingMasterDetails?.length||analysis.missingMaster.length,
+    `<div class="local-packager-table-wrap"><table class="local-packager-table"><thead><tr><th>Código PW</th><th>Sistema</th><th>Rev.</th><th>Descrição</th></tr></thead><tbody>${(analysis.missingMasterDetails||analysis.missingMaster.map(code=>({code}))).map(item=>`<tr><td><strong>${esc(item.code)}</strong></td><td>${esc(item.system||'—')}</td><td>${esc(item.revision||'—')}</td><td>${esc(item.description||'—')}</td></tr>`).join('')}</tbody></table></div>`,true);
+
+  const duplicateCodeDetails=detailBlock('Códigos PW com mais de um PDF',analysis.duplicateCodeDetails?.length||analysis.duplicateCodes.length,
+    `<div class="local-packager-conflicts">${(analysis.duplicateCodeDetails||analysis.duplicateCodes.map(code=>({code,files:[]}))).map(item=>`<article><strong>${esc(item.code)}</strong>${item.files?.length?`<ul>${item.files.map(file=>`<li><span>${esc(file.fileName)}</span>${file.path&&file.path!==file.fileName?`<small>${esc(file.path)}</small>`:''}${file.fileRevision||file.masterRevision?`<em>Rev. PDF: ${esc(file.fileRevision||'—')} · Rev. lista: ${esc(file.masterRevision||'—')}</em>`:''}</li>`).join('')}</ul>`:'<small>Arquivos conflitantes não detalhados nesta validação.</small>'}</article>`).join('')}</div>`,true);
+
+  const duplicateFileDetails=detailBlock('Nomes de PDF duplicados no ZIP',analysis.duplicateFileNameDetails?.length||analysis.duplicateFileNames.length,
+    `<div class="local-packager-conflicts">${(analysis.duplicateFileNameDetails||analysis.duplicateFileNames.map(fileName=>({fileName,files:[]}))).map(item=>`<article><strong>${esc(item.fileName)}</strong>${item.files?.length?`<ul>${item.files.map(file=>`<li><span>${esc(file.path||file.fileName)}</span></li>`).join('')}</ul>`:''}</article>`).join('')}</div>`);
+
+  const revisionDetails=detailBlock('Divergências de revisão',analysis.revisionWarnings.length,
+    `<div class="local-packager-table-wrap"><table class="local-packager-table"><thead><tr><th>Código PW</th><th>Rev. lista</th><th>Rev. PDF</th><th>Arquivo</th><th>Sistema</th></tr></thead><tbody>${analysis.revisionWarnings.map(item=>`<tr><td><strong>${esc(item.code)}</strong></td><td>${esc(item.masterRevision||'—')}</td><td>${esc(item.fileRevision||'—')}</td><td>${esc(item.fileName||item.path||'—')}</td><td>${esc(item.system||'—')}</td></tr>`).join('')}</tbody></table></div>`,true);
+
+  const warningDetails=[
+    detailBlock('Documentos sem SISTEMA',analysis.missingSystem.length,`<div class="local-packager-code-list">${analysis.missingSystem.map(code=>`<code>${esc(code)}</code>`).join('')}</div>`),
+    detailBlock('Documentos sem STATUS',analysis.missingStatus.length,`<div class="local-packager-code-list">${analysis.missingStatus.map(code=>`<code>${esc(code)}</code>`).join('')}</div>`)
+  ].join('');
+
   report.innerHTML=`<div class="local-packager-metrics">
       <span><b>${analysis.masterCount.toLocaleString('pt-BR')}</b><small>Registros na lista</small></span>
       <span><b>${analysis.pdfCount.toLocaleString('pt-BR')}</b><small>PDFs no ZIP</small></span>
@@ -23,7 +49,7 @@ function renderAnalysis(report,analysis){
       <span><b>${systems.length.toLocaleString('pt-BR')}</b><small>Sistemas</small></span>
     </div>
     <div class="local-packager-size"><span>ZIP de entrada <b>${formatBytes(analysis.sourceZipBytes)}</b></span><span>Saída estimada <b>${formatBytes(analysis.estimatedOutputBytes)}</b></span><span>Espaço livre recomendado <b>${formatBytes(analysis.recommendedFreeBytes)}</b></span></div>
-    ${problems}${warnings}
+    ${problems}${unmatchedDetails}${missingMasterDetails}${duplicateCodeDetails}${duplicateFileDetails}${warnings}${revisionDetails}${warningDetails}
     <details class="local-packager-systems"><summary>Sistemas encontrados (${systems.length})</summary><div>${systems.map(([name,count])=>`<span>${esc(name)} <b>${count.toLocaleString('pt-BR')}</b></span>`).join('')}</div></details>
     <p class="local-packager-note">A estimativa de espaço é conservadora. O navegador não consegue consultar com precisão o espaço livre do disco escolhido.</p>`;
 }
@@ -71,7 +97,7 @@ function packagerModal(){
       analysis=await documentPackagerService.analyze({pdfZipFile,masterFile,signal:controller.signal,onProgress:progress=>status.textContent=progressText(progress)});
       validatedSignature=signature();renderAnalysis(report,analysis);report.hidden=false;
       if(analysis.canGenerate){status.textContent=documentPackagerService.supportsLargePackage()?`Validação concluída: ${analysis.matchedCount.toLocaleString('pt-BR')} documento(s) prontos para gerar.`:'Validação aprovada, mas este navegador não oferece gravação direta para pacotes grandes. Use Chrome ou Edge no computador.';status.classList.add(documentPackagerService.supportsLargePackage()?'success':'error')}
-      else{status.textContent='Validação concluída com inconsistências bloqueantes. Corrija os itens do relatório antes de gerar.';status.classList.add('error')}
+      else{status.textContent='Validação concluída com inconsistências bloqueantes. Use os detalhes abaixo como checklist de correção antes de gerar.';status.classList.add('error')}
     }catch(error){analysis=null;validatedSignature='';report.hidden=true;status.textContent=error?.name==='AbortError'?'Validação cancelada.':(error?.message||'Falha ao validar os arquivos.');if(error?.name!=='AbortError')status.classList.add('error')}
     finally{controller=null;cancelButton.disabled=false;setRunning(false);generateButton.disabled=!analysis?.canGenerate||!documentPackagerService.supportsLargePackage()}
   };
