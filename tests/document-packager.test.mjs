@@ -40,6 +40,14 @@ assert.equal(inferDocumentType('MM-17.00.00.00-ABC-0001'),'Manual de manutençã
 assert.equal(inferDocumentType('PF-17.00.00.00-ABC-0001'),'Plano de Inspeção e Teste em Fábrica');
 assert.equal(inferDocumentType('PN-17.00.00.00-ABC-0001'),'Procedimento de montagem');
 assert.equal(inferDocumentType('PV-17.00.00.00-ABC-0001'),'Procedimento de movimentação e armazenagem');
+assert.equal(inferDocumentType('PI-17.00.00.00-ABC-0001'),'Procedimento de Inspeção de Fábrica');
+assert.equal(inferDocumentType('PL-17.00.00.00-ABC-0001'),'Procedimento de Teste de Instalação');
+assert.equal(inferDocumentType('TR-17.00.00.00-ABC-0001'),'Plano de Treinamento');
+assert.equal(inferDocumentType('MD-17.00.00.00-ABC-0001'),'Memorial Descritivo');
+assert.equal(inferDocumentType('MO-17.00.00.00-ABC-0001'),'Manual de Operação');
+assert.equal(inferDocumentType('PT-17.00.00.00-ABC-0001'),'Procedimento de Teste');
+assert.equal(inferDocumentType('RT-17.00.00.00-ABC-0001'),'Relatório de Testes');
+assert.equal(inferDocumentType('EM-17.00.00.00-ABC-0001'),'Especificação de Materiais');
 assert.equal(matchPdfName('DE-99.99.99.99-XXX-9999-0.pdf',master),null);
 
 const workbook=XLSX.utils.book_new();
@@ -77,10 +85,52 @@ for(const chunk of outputChunks){output.set(chunk,offset);offset+=chunk.length}
 const packageFiles=unzipSync(output);
 assert.ok(packageFiles['manifest.json']);
 assert.ok(packageFiles['documents.json']);
-assert.deepEqual(packageFiles['documents/DE-17.00.00.00-AMV-0001-0.pdf'],pdfBytes);
+assert.deepEqual(packageFiles['documents/amv/DE-17.00.00.00-AMV-0001-0.pdf'],pdfBytes);
 const catalog=JSON.parse(new TextDecoder().decode(packageFiles['documents.json']));
 assert.equal(catalog.documents[0].system_name,'AMV');
 assert.equal(catalog.documents[0].revision,'0');
+delete globalThis.showSaveFilePicker;
+
+const multiSystemWorkbook=XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(multiSystemWorkbook,XLSX.utils.aoa_to_sheet([
+  ['SISTEMA','FASE','CÓDIGO PW','DESCRIÇÃO','STATUS','REVISÃO'],
+  ['AMV','INSTALAÇÃO','FT-17.95.99.XX-630-1201','FORMULÁRIO COMPARTILHADO','APROVADO','0'],
+  ['PARA-CHOQUE','INSTALAÇÃO','FT-17.95.99.XX-630-1201','FORMULÁRIO COMPARTILHADO','APROVADO','0']
+]),'Lista');
+const multiSystemMasterBytes=XLSX.write(multiSystemWorkbook,{bookType:'xlsx',type:'array'});
+const sharedName='FT-17.95.99.XX-630-1201-0.pdf';
+const multiSystemZip=zipSync({
+  [`03. AMV/${sharedName}`]:pdfBytes,
+  [`08. PARA-CHOQUE/${sharedName}`]:pdfBytes
+},{level:0});
+const multiSystemPdfZip=new File([multiSystemZip],'multi-sistema.zip',{type:'application/zip'});
+const multiSystemMaster=new File([multiSystemMasterBytes],'multi-sistema.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+const multiSystemAnalysis=await service.analyze({pdfZipFile:multiSystemPdfZip,masterFile:multiSystemMaster});
+assert.equal(multiSystemAnalysis.canGenerate,true);
+assert.equal(multiSystemAnalysis.masterCount,2);
+assert.equal(multiSystemAnalysis.pdfCount,2);
+assert.equal(multiSystemAnalysis.matchedCount,2);
+assert.deepEqual(multiSystemAnalysis.systemCounts,{AMV:1,'PARA-CHOQUE':1});
+assert.equal(matchPdfName(`03. AMV/${sharedName}`,parseMasterRows([
+  ['SISTEMA','CÓDIGO PW','DESCRIÇÃO'],
+  ['AMV','FT-17.95.99.XX-630-1201','A'],
+  ['PARA-CHOQUE','FT-17.95.99.XX-630-1201','B']
+])).record.system,'AMV');
+
+const multiChunks=[];
+globalThis.showSaveFilePicker=async()=>({createWritable:async()=>({write:async chunk=>multiChunks.push(new Uint8Array(chunk)),close:async()=>{},abort:async()=>{}})});
+const multiGenerated=await service.generate({pdfZipFile:multiSystemPdfZip,analysis:multiSystemAnalysis});
+assert.equal(multiGenerated.documentCount,2);
+const multiTotal=multiChunks.reduce((sum,chunk)=>sum+chunk.length,0);
+const multiOutput=new Uint8Array(multiTotal);offset=0;
+for(const chunk of multiChunks){multiOutput.set(chunk,offset);offset+=chunk.length}
+const multiFiles=unzipSync(multiOutput);
+assert.ok(multiFiles[`documents/amv/${sharedName}`]);
+assert.ok(multiFiles[`documents/para-choque/${sharedName}`]);
+const multiCatalog=JSON.parse(new TextDecoder().decode(multiFiles['documents.json']));
+assert.equal(multiCatalog.documents.length,2);
+assert.equal(new Set(multiCatalog.documents.map(item=>item.id)).size,2);
+assert.equal(multiCatalog.documents[0].code,multiCatalog.documents[1].code);
 delete globalThis.showSaveFilePicker;
 
 const conflictWorkbook=XLSX.utils.book_new();
