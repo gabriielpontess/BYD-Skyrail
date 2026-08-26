@@ -125,8 +125,12 @@ async function main(){
   const cdp=new CDP(target.webSocketDebuggerUrl);await cdp.connect();
   await cdp.send('Page.enable');await cdp.send('Runtime.enable');await cdp.send('Emulation.setFocusEmulationEnabled',{enabled:true});
 
-  const seed=await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`
+  // Mantém navigator.onLine=false em TODOS os reloads. O script de identidade é
+  // separado e removido após o primeiro boot para permitir alternar roles depois.
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`
     try{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get(){return false}})}catch{}
+  `});
+  const seed=await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`
     localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember('CONTROLLER'))) });
     localStorage.setItem('byd-skyrail:systems-cache',JSON.stringify([{id:'sys-test',name:'SISTEMA TESTE',active:true}]));
   `});
