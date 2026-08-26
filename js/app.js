@@ -308,7 +308,11 @@ async function renderCurrentView() {
   const page = document.querySelector('#page');
   if (!page) return;
   if (state.view === 'home') return renderHome(page);
-  if (state.view === 'documents') return renderDocuments(page);
+  if (state.view === 'documents') {
+    page.innerHTML = '<div class="empty-state" data-local-documents-host><h3>Carregando documentos…</h3><p>Preparando o catálogo local deste dispositivo.</p></div>';
+    document.dispatchEvent(new CustomEvent('byd:render-local-documents'));
+    return;
+  }
   if (state.view === 'profile') return renderProfile(page);
   if (state.view === 'audit' && isAdmin()) return renderAudit(page);
   return renderHome(page);
@@ -576,7 +580,7 @@ function resizeAvatar(file) {
         canvas.height = 240;
         const context = canvas.getContext('2d');
         context.drawImage(image, sx, sy, size, size, 0, 0, 240, 240);
-        resolve(canvas.toDataURL('image/jpeg', .82));
+        resolve(canvas.toDataURL(file, .82));
       };
       image.src = reader.result;
     };
