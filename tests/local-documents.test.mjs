@@ -51,6 +51,10 @@ assert.match(viewer,/title="\$\{esc\(title\)\}"/,'nome completo do documento dev
 assert.match(viewer,/viewerIcon\('download'\)/,'Baixar PDF deve possuir ícone');
 assert.match(viewer,/viewerIcon\('fullscreen'\)/,'Tela cheia deve possuir ícone');
 assert.match(viewer,/viewerIcon\('close'\)/,'Fechar deve possuir ícone');
+assert.match(viewer,/data-pdf-canvas hidden/,'canvas não renderizado deve permanecer oculto no primeiro frame');
+assert.match(viewer,/stage\.classList\.remove\('is-loading'\)/,'estado de carregamento deve sair somente após o primeiro frame pronto');
+assert.match(localCss,/canvas\[hidden\]\{display:none\}/,'CSS não pode tornar visível o canvas vazio');
+assert.match(localCss,/Renderizando documento/,'viewer deve mostrar estado neutro enquanto a primeira página é renderizada');
 assert.doesNotMatch(viewer,/local-pdf-controls-hidden/,'toolbar real não deve desaparecer sobre o documento');
 assert.match(localCss,/\.local-pdf-toolbar\{position:relative/,'toolbar deve participar do fluxo do viewer e não sobrepor o PDF');
 assert.doesNotMatch(localCss,/\.local-pdf-toolbar\{position:absolute/,'toolbar não pode flutuar sobre o desenho');
