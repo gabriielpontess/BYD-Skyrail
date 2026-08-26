@@ -40,13 +40,25 @@ function importModal(){
   modal=document.createElement('div');modal.id='local-import-modal';modal.className='modal-backdrop hidden';
   modal.innerHTML=`<section class="modal local-import-dialog" role="dialog" aria-modal="true" aria-labelledby="local-import-title"><header class="modal-head"><div class="modal-head-copy"><strong id="local-import-title">Importar atualização documental</strong><small>Pacote local .zip via USB ou armazenamento do dispositivo</small></div><button class="btn btn-outline" data-import-close type="button">Fechar</button></header><div class="local-import-body"><p>O pacote deve conter <code>manifest.json</code>, <code>documents.json</code> e a pasta <code>documents/</code>.</p><label class="field"><span>Pacote documental (.zip)</span><input type="file" accept=".zip,application/zip" data-import-file></label><div class="local-import-status" data-import-status aria-live="polite">Selecione um pacote para iniciar.</div><button class="btn btn-primary" data-import-start type="button">Validar e importar</button></div></section>`;
   document.body.append(modal);
-  modal.querySelector('[data-import-close]').onclick=()=>modal.classList.add('hidden');
-  modal.addEventListener('click',event=>{if(event.target===modal)modal.classList.add('hidden')});
-  modal.querySelector('[data-import-start]').onclick=async()=>{
-    const file=modal.querySelector('[data-import-file]').files?.[0],status=modal.querySelector('[data-import-status]'),button=modal.querySelector('[data-import-start]');
+  const closeButton=modal.querySelector('[data-import-close]'),fileInput=modal.querySelector('[data-import-file]'),startButton=modal.querySelector('[data-import-start]');
+  let running=false;
+  const setRunning=value=>{
+    running=value;
+    modal.dataset.operationRunning=value?'1':'0';
+    closeButton.disabled=value;
+    fileInput.disabled=value;
+    startButton.disabled=value;
+    startButton.classList.toggle('is-loading',value);
+    startButton.setAttribute('aria-busy',String(value));
+  };
+  const close=()=>{if(!running)modal.classList.add('hidden')};
+  closeButton.onclick=close;
+  modal.addEventListener('click',event=>{if(event.target===modal)close()});
+  startButton.onclick=async()=>{
+    const file=fileInput.files?.[0],status=modal.querySelector('[data-import-status]');
     status.classList.remove('error','success');
     if(!file){status.textContent='Selecione um arquivo .zip antes de iniciar.';status.classList.add('error');return}
-    button.disabled=true;button.classList.add('is-loading');button.textContent='Importando';
+    setRunning(true);startButton.textContent='Importando';
     try{
       const info=await packageImportService.import(file,progress=>{status.textContent=progress.phase==='extract'?`Validando ${progress.name||'arquivo'}…`:`Importando ${progress.done}/${progress.total}${progress.code?` · ${progress.code}`:''}`});
       localStorage.setItem('byd-skyrail-last-sync',info.generatedAt||new Date().toISOString());
@@ -54,7 +66,7 @@ function importModal(){
       status.classList.add('success');
       setTimeout(()=>location.reload(),1000);
     }catch(error){console.error('[BYD Skyrail] Importação local falhou:',error);status.textContent=error?.message||'Não foi possível importar o pacote. Verifique o arquivo e tente novamente.';status.classList.add('error')}
-    finally{button.disabled=false;button.classList.remove('is-loading');button.textContent='Validar e importar'}
+    finally{setRunning(false);startButton.textContent='Validar e importar'}
   };
   return modal;
 }
@@ -69,11 +81,11 @@ function addImportAction(){
 }
 
 function desktopRows(docs,systemMap){
-  return `<div class="doc-table-wrap" data-local-layout="desktop"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th></tr></thead><tbody>${docs.map(doc=>`<tr data-open-doc="${esc(doc.id)}" tabindex="0" aria-label="Abrir documento ${esc(doc.code)}"><td><span class="doc-code">${esc(doc.code)}</span></td><td><span class="doc-description">${esc(doc.title)}</span>${doc.description?`<small class="local-doc-description">${esc(doc.description)}</small>`:''}</td><td><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span></td><td>${esc(doc.discipline||'—')}</td><td>${esc(doc.document_type||'—')}</td><td>Rev. ${esc(doc.revision)}</td><td>${approvalBadge(doc.approval_status||doc.source_status)}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="doc-table-wrap" data-local-layout="desktop"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th></tr></thead><tbody>${docs.map(doc=>`<tr data-open-doc="${esc(doc.id)}" tabindex="0" role="button" aria-label="Abrir documento ${esc(doc.code)}"><td><span class="doc-code">${esc(doc.code)}</span></td><td><span class="doc-description">${esc(doc.title)}</span>${doc.description?`<small class="local-doc-description">${esc(doc.description)}</small>`:''}</td><td><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span></td><td>${esc(doc.discipline||'—')}</td><td>${esc(doc.document_type||'—')}</td><td>Rev. ${esc(doc.revision)}</td><td>${approvalBadge(doc.approval_status||doc.source_status)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
 function mobileRows(docs,systemMap){
-  return `<div class="mobile-document-list" data-local-layout="mobile">${docs.map(doc=>`<article class="mobile-doc-card" data-open-doc="${esc(doc.id)}" tabindex="0" aria-label="Abrir documento ${esc(doc.code)}"><div class="mobile-doc-top"><span class="doc-code">${esc(doc.code)}</span><span class="status-badge updated">Rev. ${esc(doc.revision)}</span></div><span class="doc-description">${esc(doc.title)}</span><div class="mobile-doc-meta"><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span><span>${esc(doc.document_type||doc.discipline||'')}</span></div><div class="mobile-doc-meta">${approvalBadge(doc.approval_status||doc.source_status)}</div><div class="mobile-doc-actions"><span class="btn btn-outline">Abrir</span></div></article>`).join('')}</div>`;
+  return `<div class="mobile-document-list" data-local-layout="mobile">${docs.map(doc=>`<article class="mobile-doc-card" data-open-doc="${esc(doc.id)}" tabindex="0" role="button" aria-label="Abrir documento ${esc(doc.code)}"><div class="mobile-doc-top"><span class="doc-code">${esc(doc.code)}</span><span class="status-badge updated">Rev. ${esc(doc.revision)}</span></div><span class="doc-description">${esc(doc.title)}</span><div class="mobile-doc-meta"><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span><span>${esc(doc.document_type||doc.discipline||'')}</span></div><div class="mobile-doc-meta">${approvalBadge(doc.approval_status||doc.source_status)}</div><div class="mobile-doc-actions"><span class="btn btn-outline">Abrir</span></div></article>`).join('')}</div>`;
 }
 
 async function renderLocalDocumentsPage(){
@@ -86,7 +98,8 @@ async function renderLocalDocumentsPage(){
     const systems=await documentRepository.getSystems({includeInactive:true});
     const systemMap=new Map(systems.map(system=>[system.id,system.name]));
     const params=routeInfo().params;
-    const selectedSystem=params.get('system')||'ALL';
+    const requestedSystem=params.get('system');
+    const selectedSystem=requestedSystem&&systems.some(system=>system.id===requestedSystem&&system.active!==false)?requestedSystem:'ALL';
     const visible=await documentRepository.search(localState.query,{systemId:selectedSystem,discipline:localState.discipline,documentType:localState.documentType,approvalStatus:localState.approvalStatus});
     const disciplines=[...new Set(all.map(doc=>doc.discipline).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
     const types=[...new Set(all.map(doc=>doc.document_type).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
