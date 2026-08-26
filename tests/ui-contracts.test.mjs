@@ -47,6 +47,9 @@ assert.match(notificationsUx,/data-notification-bell/,'sino deve receber seletor
 assert.match(notificationsUx,/aria-label\^="Notificações"/,'primeira descoberta do sino deve aceitar contador no aria-label');
 assert.match(notificationsUx,/data-notification-clear/,'central de notificações deve permitir limpar o histórico');
 assert.match(notificationsUx,/event\.key==='Escape'/,'central de notificações deve fechar com Escape');
+assert.match(notificationsUx,/button\.dataset\.notificationsBound==='1'\)return/,'observer de notificações não deve rerenderizar um sino já vinculado');
+assert.match(notificationsUx,/if\(badge\.textContent!==text\)badge\.textContent=text/,'contador deve ser idempotente para não gerar loop de MutationObserver');
+assert.match(notificationsUx,/if\(badge\.hidden!==hidden\)badge\.hidden=hidden/,'estado visual do contador deve mudar apenas quando necessário');
 assert.match(api,/\['ADMIN','CONTROLLER','USER'\]/);
 assert.match(css,/@media \(max-width:1100px\)/);
 assert.match(css,/@media \(max-width:820px\)/);
