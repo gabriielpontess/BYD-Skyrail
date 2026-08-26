@@ -89,10 +89,42 @@ function refineTables(){
   });
 }
 
+function refineAuditTables(){
+  $$('.audit-table').forEach(table=>{
+    if(table.parentElement?.classList.contains('audit-table-wrap'))return;
+    const wrap=document.createElement('div');
+    wrap.className='audit-table-wrap';
+    wrap.tabIndex=0;
+    wrap.setAttribute('aria-label','Tabela administrativa. Role horizontalmente se necessário.');
+    table.parentNode?.insertBefore(wrap,table);
+    wrap.append(table);
+  });
+}
+
 function refineButtons(){
   $$('button').forEach(button=>{
     if(!button.hasAttribute('type'))button.type='button';
   });
+}
+
+function visibleModalBackdrops(){
+  return $$('.modal-backdrop:not(.hidden)').filter(backdrop=>getComputedStyle(backdrop).display!=='none');
+}
+
+function modalBusy(backdrop){
+  return backdrop?.dataset.operationRunning==='1'||Boolean(backdrop?.querySelector('.is-loading,[aria-busy="true"]'));
+}
+
+function syncModalState(){
+  const open=visibleModalBackdrops().length>0;
+  document.body.classList.toggle('has-modal-open',open);
+}
+
+function closeModalBackdrop(backdrop){
+  if(!backdrop||backdrop.classList.contains('local-pdf-backdrop')||modalBusy(backdrop))return false;
+  const closeButton=backdrop.querySelector('[data-close],[data-ux-close],[data-import-close],[data-packager-close]');
+  if(closeButton){closeButton.click();queueMicrotask(syncModalState);return true}
+  backdrop.remove();queueMicrotask(syncModalState);return true;
 }
 
 function enhance(){
@@ -102,7 +134,9 @@ function enhance(){
   markRoleForStyling();
   refineEmptyStates();
   refineTables();
+  refineAuditTables();
   refineButtons();
+  syncModalState();
 }
 
 // Erros de módulos legados que ainda usam alert() passam a utilizar o mesmo toast
@@ -138,12 +172,33 @@ document.addEventListener('pointerup',event=>{
   requestAnimationFrame(()=>{if(document.activeElement===button)button.blur()});
 },true);
 
+// Modais comuns compartilham as mesmas regras: bloqueiam o scroll de fundo,
+// fecham com Escape/backdrop e não podem desaparecer no meio de uma operação.
 document.addEventListener('click',event=>{
-  if(event.target.closest?.('#user-menu,#user-menu-button'))return;
+  const backdrop=event.target?.classList?.contains('modal-backdrop')?event.target:null;
+  if(backdrop&&!backdrop.classList.contains('local-pdf-backdrop')){
+    if(modalBusy(backdrop)){
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      return;
+    }
+    closeModalBackdrop(backdrop);
+    return;
+  }
+  if(event.target.closest?.('#user-menu,#user-menu-button')){queueMicrotask(syncModalState);return}
   closeUserMenu();
-});
+  queueMicrotask(syncModalState);
+},true);
+
 document.addEventListener('keydown',event=>{
   if(event.key!=='Escape')return;
+  const backdrops=visibleModalBackdrops();
+  const top=backdrops.at(-1);
+  if(top&&!top.classList.contains('local-pdf-backdrop')){
+    if(modalBusy(top))return;
+    event.preventDefault();
+    if(closeModalBackdrop(top))return;
+  }
   const menu=$('#user-menu');
   if(menu&&!menu.classList.contains('hidden')){
     event.preventDefault();closeUserMenu();$('#user-menu-button')?.focus({preventScroll:true});
@@ -153,4 +208,5 @@ addEventListener('hashchange',()=>{closeUserMenu();queueMicrotask(enhance)});
 addEventListener('load',enhance);
 const appRoot=$('#app');
 if(appRoot)new MutationObserver(()=>queueMicrotask(enhance)).observe(appRoot,{childList:true,subtree:true});
+if(document.body)new MutationObserver(()=>queueMicrotask(enhance)).observe(document.body,{childList:true,subtree:false});
 enhance();
