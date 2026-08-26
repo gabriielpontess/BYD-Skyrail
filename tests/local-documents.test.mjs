@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const read=path=>readFile(new URL(path,import.meta.url),'utf8');
-const [catalogRepo,fileService,importer,viewer,catalog,capacitor,netlify,localUx,localCss]=await Promise.all([
+const [catalogRepo,fileService,db,sync,importer,viewer,catalog,capacitor,netlify,localUx,localCss]=await Promise.all([
   read('../js/documents/catalog-repository.js'),
   read('../js/documents/file-service.js'),
+  read('../js/db.js'),
+  read('../js/sync.js'),
   read('../js/documents/package-import-service.js'),
   read('../js/documents/viewer-service.js'),
   read('../documents.json'),
@@ -24,6 +26,12 @@ assert.match(catalogRepo,/documentCount/);
 assert.match(catalogRepo,/Código|codeN === qCode/);
 assert.match(fileService,/Directory\.Data/);
 assert.doesNotMatch(fileService,/Directory\.Documents|Directory\.External/);
+assert.match(fileService,/getKey\(document\.id\)/,'verificação de existência web não pode carregar o Blob do PDF');
+assert.match(fileService,/getAllKeys\(\)/,'disponibilidade em massa deve consultar somente IDs no IndexedDB');
+assert.match(fileService,/async availableIds\(/,'serviço deve expor consulta em lote dos arquivos disponíveis');
+assert.match(db,/availabilityPromise/,'consultas simultâneas da Home devem compartilhar uma única leitura de disponibilidade');
+assert.match(db,/documentFileService\.availableIds\(docs\)/,'db deve usar a consulta em lote em vez de ler cada PDF');
+assert.doesNotMatch(sync,/docs\.forEach\(/,'sync local não deve disparar repaint por documento no boot');
 assert.match(importer,/Pacote incompatível/);
 assert.match(importer,/Pacote incompleto/);
 assert.match(importer,/Importação interrompida sem substituir o catálogo ativo/);
