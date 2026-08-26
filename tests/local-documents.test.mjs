@@ -24,6 +24,8 @@ assert.match(catalogRepo,/catalogVersion/);
 assert.match(catalogRepo,/generatedAt/);
 assert.match(catalogRepo,/documentCount/);
 assert.match(catalogRepo,/Código|codeN === qCode/);
+assert.match(catalogRepo,/documentById = new Map/,'catálogo deve manter índice por ID em memória');
+assert.match(catalogRepo,/documentById\.get\(String\(id\)\)/,'getById não deve percorrer o catálogo inteiro');
 assert.match(fileService,/Directory\.Data/);
 assert.doesNotMatch(fileService,/Directory\.Documents|Directory\.External/);
 assert.match(fileService,/getKey\(document\.id\)/,'verificação de existência web não pode carregar o Blob do PDF');
