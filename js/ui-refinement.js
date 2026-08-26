@@ -3,10 +3,22 @@ const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 
 const member=()=>{try{return JSON.parse(localStorage.getItem('byd-skyrail-member-cache')||'null')}catch{return null}};
 const role=()=>String(member()?.role||'USER').toUpperCase();
+let feedbackTimer=null;
 
 const smallIcon=path=>`<svg class="ui-refinement-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
 const updateIcon=()=>smallIcon('<path d="M20 7h-5V2M4 17h5v5"/><path d="M6.1 8A7 7 0 0 1 18 5l2 2M17.9 16A7 7 0 0 1 6 19l-2-2"/>');
 const emptyIcon=()=>smallIcon('<path d="M6 2h8l4 4v16H6z"/><path d="M14 2v5h5M9 12h6M9 16h6"/>');
+
+function showFeedback(message,{error=true,duration=4200}={}){
+  const toast=$('#toast');
+  if(!toast)return;
+  clearTimeout(feedbackTimer);
+  toast.textContent=String(message||'Não foi possível concluir a operação.');
+  toast.classList.toggle('error',Boolean(error));
+  toast.setAttribute('role',error?'alert':'status');
+  toast.classList.add('show');
+  feedbackTimer=setTimeout(()=>toast.classList.remove('show'),duration);
+}
 
 function closeUserMenu(){
   const menu=$('#user-menu'),button=$('#user-menu-button');
@@ -103,6 +115,31 @@ function enhance(){
   refineTables();
   refineButtons();
 }
+
+// Erros de módulos legados que ainda usam alert() passam a utilizar o mesmo toast
+// do aplicativo, evitando diálogos bloqueantes e mantendo feedback consistente.
+const nativeAlert=globalThis.alert?.bind(globalThis);
+if(typeof nativeAlert==='function')globalThis.alert=message=>showFeedback(message,{error:true});
+globalThis.__BYD_SHOW_FEEDBACK=showFeedback;
+
+// Formulários que já desabilitam o botão durante operações assíncronas recebem o
+// spinner automaticamente e o removem assim que o próprio fluxo reabilita o botão.
+document.addEventListener('submit',event=>{
+  const button=event.submitter||event.target?.querySelector?.('button[type="submit"]');
+  if(!button)return;
+  requestAnimationFrame(()=>{
+    if(!button.disabled)return;
+    button.classList.add('is-loading');
+    button.setAttribute('aria-busy','true');
+    const observer=new MutationObserver(()=>{
+      if(button.disabled)return;
+      button.classList.remove('is-loading');
+      button.removeAttribute('aria-busy');
+      observer.disconnect();
+    });
+    observer.observe(button,{attributes:true,attributeFilter:['disabled']});
+  });
+},true);
 
 // Estados de clique por mouse/toque não devem permanecer como foco visual. O foco
 // por teclado continua preservado por :focus-visible.
