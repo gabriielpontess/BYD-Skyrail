@@ -12,6 +12,7 @@ button:disabled,.btn:disabled{opacity:.55;cursor:not-allowed;filter:saturate(.75
 .local-catalog-grid{grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr))}
 .local-catalog-grid>span{min-width:0}
 .local-catalog-grid b,.local-catalog-grid small{max-width:100%;overflow-wrap:anywhere;word-break:normal}
+.home-widgets>.local-catalog-summary{grid-column:1/-1;margin-bottom:0}
 
 /* Keep cards and their contents inside the available viewport/grid cell. */
 .page-shell,.page-head,.page-head>div,.page-actions,.panel-card,.widget-card,.quick-card,.search-panel,.profile-section,.user-row,.mobile-doc-card,.mobile-doc-top,.mobile-doc-meta,.notification-head,.notification-head>div,.notification-item,.systems-home-section,.system-home-card,.system-card-copy,.results-bar,.results-tools{min-width:0;box-sizing:border-box}
@@ -91,6 +92,10 @@ body.has-modal-open{overflow:hidden}
   .page-shell{padding-left:18px;padding-right:18px}.quick-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.home-widgets{grid-template-columns:repeat(2,minmax(0,1fr))}.doc-table{min-width:980px}.notification-panel{right:14px}
   .system-home-card{min-height:104px}.panel-card,.widget-card,.search-panel{min-width:0}
 }
+@media (max-width:1100px) and (min-width:901px){
+  .quick-grid.admin{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
 @media (max-width:900px){
   .topbar-inner{gap:8px}.header-tools{gap:5px}.user-chip{max-width:150px}.user-chip-copy{min-width:0}
   .page-head{gap:12px;align-items:flex-start}.page-head,.page-actions{flex-wrap:wrap}.page-actions{width:100%}.page-actions .btn{flex:1 1 auto}
@@ -117,5 +122,15 @@ body.has-modal-open{overflow:hidden}
 @media (hover:none) and (pointer:coarse){
   button,.btn,.nav-btn,.mobile-nav-btn{min-height:44px;-webkit-tap-highlight-color:transparent}.doc-table tbody tr[data-open-doc]{min-height:48px}.notification-item{min-height:66px}.local-pdf-toolbar .btn{min-height:44px}.mobile-doc-card[data-open-doc]:active{transform:scale(.995)}
   .btn:hover:not(:disabled),.quick-card:hover,.system-home-card:hover{transform:none}
+  .quick-card:hover{border-color:var(--line);box-shadow:var(--shadow-sm)}
+  .system-home-card:hover{border-color:#d8e3ee;box-shadow:none}
+  .mobile-doc-card[data-open-doc]:hover{border-color:var(--line);box-shadow:var(--shadow-sm)}
+  .btn-primary:hover{background:linear-gradient(180deg,var(--gold-500),var(--gold-600))}
+  .btn-blue:hover{background:var(--blue-800)}
+  .btn-outline:hover{background:#fff}
+  .btn-ghost:hover{background:transparent}
+  .nav-btn:hover,.icon-btn:hover,.user-chip:hover{background:transparent}
+  .notification-item:hover{background:#fff}.notification-item.unread:hover{background:#eef5ff}
+  .user-menu button:hover{background:transparent}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
