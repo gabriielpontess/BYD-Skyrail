@@ -3,13 +3,15 @@ import { access, mkdtemp, rm } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
 const HOST='127.0.0.1';
 const PORT=4173;
 const BASE=`http://${HOST}:${PORT}/`;
 const DEBUG_PORT=39000+Math.floor(Math.random()*1000);
-const isWindows=process.platform==='win32';
+const ROOT=fileURLToPath(new URL('../',import.meta.url));
+const VITE_BIN=fileURLToPath(new URL('../node_modules/vite/bin/vite.js',import.meta.url));
 let preview=null,chrome=null,profileDir=null;
 
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -99,12 +101,20 @@ function cachedMember(role){
   };
 }
 
+async function stopChild(child){
+  if(!child||child.exitCode!==null)return;
+  const exited=new Promise(resolve=>child.once('exit',resolve));
+  try{child.kill('SIGTERM')}catch{}
+  await Promise.race([exited,sleep(800)]);
+  if(child.exitCode===null){try{child.kill('SIGKILL')}catch{}}
+}
+
 async function main(){
   const chromePath=await findChrome();
   console.log(`[browser-smoke] Chrome: ${chromePath}`);
 
-  preview=spawn(isWindows?'npx.cmd':'npx',['vite','preview','--host',HOST,'--port',String(PORT),'--strictPort'],{
-    cwd:new URL('../',import.meta.url),stdio:['ignore','pipe','pipe'],shell:false
+  preview=spawn(process.execPath,[VITE_BIN,'preview','--host',HOST,'--port',String(PORT),'--strictPort'],{
+    cwd:ROOT,stdio:['ignore','pipe','pipe'],shell:false
   });
   preview.stdout.on('data',chunk=>process.stdout.write(`[vite] ${chunk}`));
   preview.stderr.on('data',chunk=>process.stderr.write(`[vite] ${chunk}`));
@@ -118,15 +128,12 @@ async function main(){
     '--disable-extensions','--no-first-run','--no-default-browser-check','--window-size=1365,900','about:blank'
   ];
   if(process.platform==='linux')chromeArgs.unshift('--no-sandbox');
-  chrome=spawn(chromePath,chromeArgs,{stdio:['ignore','ignore','pipe']});
-  chrome.stderr.on('data',()=>{});
+  chrome=spawn(chromePath,chromeArgs,{stdio:'ignore'});
 
   const target=await debuggerTarget();
   const cdp=new CDP(target.webSocketDebuggerUrl);await cdp.connect();
   await cdp.send('Page.enable');await cdp.send('Runtime.enable');await cdp.send('Emulation.setFocusEmulationEnabled',{enabled:true});
 
-  // Mantém navigator.onLine=false em TODOS os reloads. O script de identidade é
-  // separado e removido após o primeiro boot para permitir alternar roles depois.
   await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`
     try{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get(){return false}})}catch{}
   `});
@@ -189,7 +196,6 @@ async function main(){
     await assertResponsive(`Home após Perfil ${i+1}`);
   }
 
-  // Menu deve fechar fora e reabrir com um único clique.
   await click('#user-menu-button');
   assert.equal(await evaluate(`!document.querySelector('#user-menu').classList.contains('hidden')`),true,'menu deveria abrir');
   await evaluate(`document.querySelector('#page').click()`);
@@ -199,13 +205,11 @@ async function main(){
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
   assert.equal(await evaluate(`document.querySelector('#user-menu').classList.contains('hidden')`),true,'Escape deveria fechar menu');
 
-  // Sino deve possuir ação real e fechar com Escape.
   await click('[data-notification-bell]');
   await waitFor(`document.querySelector('#notification-panel')&&!document.querySelector('#notification-panel').classList.contains('hidden')`,{label:'central de notificações'});
   await evaluate(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
   assert.equal(await evaluate(`document.querySelector('#notification-panel').classList.contains('hidden')`),true,'Escape deveria fechar notificações');
 
-  // Tablet/mobile CONTROLLER: quatro itens e sem overflow global.
   await cdp.send('Emulation.setDeviceMetricsOverride',{width:720,height:1024,deviceScaleFactor:1,mobile:true});
   await evaluate(`window.dispatchEvent(new Event('resize'))`);await sleep(180);
   const mobileCount=await evaluate(`document.querySelectorAll('.mobile-bottom-nav button').length`);
@@ -213,14 +217,12 @@ async function main(){
   assert.equal(await evaluate(`document.documentElement.scrollWidth<=window.innerWidth+2`),true,'layout mobile não pode criar overflow horizontal global');
   await cdp.send('Emulation.clearDeviceMetricsOverride');
 
-  // USER: sem áreas administrativas e Perfil responsivo.
   await setRole('USER');
   assert.equal(await evaluate(`document.querySelector('[data-controller-updates]')===null`),true,'USER não pode receber Atualizações');
   assert.equal(await evaluate(`document.querySelector('.desktop-nav [data-nav="audit"]')===null`),true,'USER não pode receber Auditoria');
   await click('.desktop-nav [data-nav="profile"]');
   await waitFor(`document.querySelector('.profile-layout')`,{label:'Perfil USER'});await assertResponsive('Perfil USER');
 
-  // ADMIN: Auditoria disponível, sem rota Controller, Perfil responsivo.
   await setRole('ADMIN');
   assert.equal(await evaluate(`document.querySelector('.desktop-nav [data-nav="audit"]')!==null`),true,'ADMIN deve receber Auditoria');
   assert.equal(await evaluate(`document.querySelector('[data-controller-updates]')===null`),true,'ADMIN não deve receber Atualizações de Controller');
@@ -234,9 +236,12 @@ async function main(){
   console.log('browser-smoke.mjs: ok — Chrome real, navegação/perfis/menu/notificações/responsividade sem trava');
 }
 
+let failure=null;
 try{await main()}
+catch(error){failure=error}
 finally{
-  if(chrome&&!chrome.killed)chrome.kill('SIGTERM');
-  if(preview&&!preview.killed)preview.kill('SIGTERM');
+  await stopChild(chrome);
+  await stopChild(preview);
   if(profileDir)await rm(profileDir,{recursive:true,force:true}).catch(()=>{});
 }
+if(failure)throw failure;
