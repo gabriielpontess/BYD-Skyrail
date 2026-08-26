@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { inferDocumentType, matchPdfName, parseMasterRows } from '../js/documents/document-packager-service.js';
+import { File } from 'node:buffer';
+import { strToU8, unzipSync, zipSync } from 'fflate';
+import * as XLSX from 'xlsx';
+import { DocumentPackagerService, inferDocumentType, matchPdfName, parseMasterRows } from '../js/documents/document-packager-service.js';
 
 const rows=[
   ['', 'SISTEMA','FASE','ID','[Codigo ID:]','CÓDIGO','CÓDIGO PW METRÔ','DESCRIÇÃO','ENVIO METRÔ','RETORNO METRÔ','STATUS','REVISÃO'],
@@ -38,5 +41,46 @@ assert.equal(inferDocumentType('PF-17.00.00.00-ABC-0001'),'Plano de Inspeção e
 assert.equal(inferDocumentType('PN-17.00.00.00-ABC-0001'),'Procedimento de montagem');
 assert.equal(inferDocumentType('PV-17.00.00.00-ABC-0001'),'Procedimento de movimentação e armazenagem');
 assert.equal(matchPdfName('DE-99.99.99.99-XXX-9999-0.pdf',master),null);
+
+const workbook=XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet([
+  ['SISTEMA','FASE','CÓDIGO PW','DESCRIÇÃO','STATUS','REVISÃO'],
+  ['AMV','INSTALAÇÃO','DE-17.00.00.00-AMV-0001','DESENHO AMV','APROVADO','0']
+]),'Lista');
+const masterBytes=XLSX.write(workbook,{bookType:'xlsx',type:'array'});
+const pdfBytes=strToU8('%PDF-1.4\n% BYD Skyrail smoke test\n');
+const rawZip=zipSync({'AMV/DE-17.00.00.00-AMV-0001-0.pdf':pdfBytes},{level:0});
+const pdfZipFile=new File([rawZip],'docs.zip',{type:'application/zip'});
+const masterFile=new File([masterBytes],'lista.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+const service=new DocumentPackagerService();
+const analysis=await service.analyze({pdfZipFile,masterFile});
+assert.equal(analysis.canGenerate,true);
+assert.equal(analysis.pdfCount,1);
+assert.equal(analysis.masterCount,1);
+assert.equal(analysis.matchedCount,1);
+assert.deepEqual(analysis.systemCounts,{AMV:1});
+
+const outputChunks=[];
+globalThis.showSaveFilePicker=async()=>({
+  createWritable:async()=>({
+    write:async chunk=>outputChunks.push(new Uint8Array(chunk)),
+    close:async()=>{},
+    abort:async()=>{}
+  })
+});
+const generated=await service.generate({pdfZipFile,analysis});
+assert.equal(generated.documentCount,1);
+assert.equal(generated.systemCount,1);
+const total=outputChunks.reduce((sum,chunk)=>sum+chunk.length,0);
+const output=new Uint8Array(total);let offset=0;
+for(const chunk of outputChunks){output.set(chunk,offset);offset+=chunk.length}
+const packageFiles=unzipSync(output);
+assert.ok(packageFiles['manifest.json']);
+assert.ok(packageFiles['documents.json']);
+assert.deepEqual(packageFiles['documents/DE-17.00.00.00-AMV-0001-0.pdf'],pdfBytes);
+const catalog=JSON.parse(new TextDecoder().decode(packageFiles['documents.json']));
+assert.equal(catalog.documents[0].system_name,'AMV');
+assert.equal(catalog.documents[0].revision,'0');
+delete globalThis.showSaveFilePicker;
 
 console.log('document-packager tests passed');
