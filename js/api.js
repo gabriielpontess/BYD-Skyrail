@@ -4,6 +4,7 @@ import { normalizeNewUserInput } from './users/user-validation.js';
 import { createUserWithClient, inviteRedirectForLocation } from './users/user-provisioning.js';
 
 const v=value=>String(value??'').trim();
+const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function currentMember(){
   const client=getClient();
@@ -31,7 +32,21 @@ export async function listAdmin(){return documentRepository.getAll({includeInact
 
 export async function listMembers(){const{data,error}=await getClient().from('members').select('user_id,display_name,role,active,activated_at,created_at,updated_at').order('display_name');if(error)throw new Error('Não foi possível carregar os usuários.');return data||[]}
 export async function updateMember(userId,input){const role=v(input?.role).toUpperCase();if(!['ADMIN','CONTROLLER','USER'].includes(role))throw new Error('Perfil de usuário inválido.');const display_name=v(input?.display_name);if(!display_name)throw new Error('Nome do usuário obrigatório.');const{data,error}=await getClient().from('members').update({display_name,role,active:input?.active===true}).eq('user_id',v(userId)).select('user_id,display_name,role,active,activated_at,created_at,updated_at').single();if(error||!data)throw new Error('Não foi possível atualizar o usuário.');return data}
-export async function listDocumentHistory(documentId){const{data,error}=await getClient().from('document_history').select('id,document_id,event_type,code,title,discipline,revision,file_path,active,recorded_at,recorded_by').eq('document_id',v(documentId)).order('recorded_at',{ascending:false});if(error)throw new Error('Não foi possível carregar o histórico do documento.');return data||[]}
+export async function listDocumentHistory(documentId){
+  const ref=v(documentId);
+  let query=getClient().from('document_history').select('id,document_id,event_type,code,title,discipline,revision,file_path,active,recorded_at,recorded_by');
+  if(UUID_RE.test(ref)){
+    query=query.eq('document_id',ref);
+  }else{
+    const document=await documentRepository.getById(ref);
+    const code=v(document?.code);
+    if(!code)return[];
+    query=query.eq('code',code);
+  }
+  const{data,error}=await query.order('recorded_at',{ascending:false});
+  if(error)throw new Error('Não foi possível carregar o histórico do documento.');
+  return data||[];
+}
 export async function listRecentDocumentHistory(limit=50){const safeLimit=Math.min(100,Math.max(1,Number(limit)||50));const{data,error}=await getClient().from('document_history').select('id,document_id,event_type,code,title,discipline,revision,file_path,active,recorded_at,recorded_by').order('recorded_at',{ascending:false}).limit(safeLimit);if(error)throw new Error('Não foi possível carregar a auditoria.');return data||[]}
 
 export async function downloadPdf(){throw new Error('Download por nuvem foi removido. O PDF deve existir no armazenamento local do aplicativo.')}
