@@ -1,4 +1,4 @@
-const VERSION='1.4.0';
+const VERSION='1.4.1';
 const CACHE=`byd-skyrail-${VERSION}`;
 const INDEX='./index.html';
 
@@ -43,28 +43,20 @@ self.addEventListener('fetch',event=>{
   const url=new URL(event.request.url);
   if(url.origin!==self.location.origin)return;
 
-  if(event.request.mode==='navigate'){
-    event.respondWith((async()=>{
-      const cache=await caches.open(CACHE);
-      try{
-        const response=await fetch(event.request,{cache:'no-store'});
-        if(response.ok)return response;
-      }catch{}
-      return await cache.match('./')||await cache.match(INDEX)||Response.error();
-    })());
-    return;
-  }
-
   event.respondWith((async()=>{
     const cache=await caches.open(CACHE);
-    const cached=await cache.match(event.request);
-    if(cached)return cached;
+
     try{
-      const response=await fetch(event.request);
+      // Sempre prefira a versão publicada mais recente quando houver rede.
+      // O cache existe como fallback offline, não como fonte primária online.
+      const response=await fetch(event.request,{cache:'no-store'});
       if(response.ok)await cache.put(event.request,response.clone());
       return response;
     }catch{
-      return Response.error();
+      if(event.request.mode==='navigate'){
+        return await cache.match('./')||await cache.match(INDEX)||Response.error();
+      }
+      return await cache.match(event.request)||Response.error();
     }
   })());
 });
