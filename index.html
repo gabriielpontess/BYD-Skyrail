@@ -59,7 +59,7 @@
           }
         } catch (error) { sw = `erro: ${error?.message || error}`; }
         const details = [
-          `build: PR8-stability-1`,
+          `build: PR8-ios-diag-2`,
           `tempo: ${Math.round((Date.now()-startedAt)/1000)}s`,
           `modo standalone: ${isStandalone() ? 'sim' : 'não'}`,
           `online: ${navigator.onLine ? 'sim' : 'não'}`,
@@ -88,7 +88,6 @@
   <script type="module" src="./js/document-packager-ux.js"></script>
   <script type="module" src="./js/role-ux.js"></script>
   <script type="module" src="./js/notifications-ux.js"></script>
-  <script type="module" src="./js/interaction-stability.js"></script>
   <script>
     if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
       addEventListener('load', async () => {
