@@ -18,9 +18,8 @@ function bindUserMenu(){
   const button=$('#user-menu-button');
   if(!button||button.dataset.refinedMenuBound==='1')return;
   button.dataset.refinedMenuBound='1';
-  // app.js mantém um boolean interno para o menu. Aqui o DOM passa a ser a fonte de
-  // verdade para evitar o caso em que um clique externo fecha a caixa mas o boolean
-  // permanece aberto, exigindo dois cliques para reabrir.
+  // O DOM é a fonte de verdade para o menu. Isso evita o estado em que um clique
+  // externo fecha a caixa visualmente mas um boolean interno continua "aberto".
   button.addEventListener('click',event=>{
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -41,6 +40,8 @@ function refineNavigation(){
 
 function refineControllerNav(){
   if(role()!=='CONTROLLER')return;
+  const mobile=$('.mobile-bottom-nav');
+  if(mobile)mobile.classList.remove('three');
   $$('[data-controller-updates]').forEach(button=>{
     if(!button.querySelector('svg'))button.insertAdjacentHTML('afterbegin',updateIcon());
     if(!button.getAttribute('aria-label'))button.setAttribute('aria-label','Atualizações documentais');
@@ -107,7 +108,7 @@ function enhance(){
 // por teclado continua preservado por :focus-visible.
 document.addEventListener('pointerup',event=>{
   const button=event.target.closest?.('button');
-  if(!button||button.matches('input,select,textarea'))return;
+  if(!button)return;
   requestAnimationFrame(()=>{if(document.activeElement===button)button.blur()});
 },true);
 
