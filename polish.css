@@ -7,11 +7,17 @@ button:focus:not(:focus-visible),.btn:focus:not(:focus-visible){outline:0}
 button:disabled,.btn:disabled{opacity:.55;cursor:not-allowed;filter:saturate(.75);transform:none!important}
 .btn.is-loading{position:relative;pointer-events:none}.btn.is-loading::after{content:"";width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;margin-left:8px;vertical-align:-2px;animation:byd-spin .7s linear infinite}@keyframes byd-spin{to{transform:rotate(360deg)}}
 .quick-card:active,.system-home-card:active,.mobile-doc-card[data-open-doc]:active{transform:scale(.995)}
+.quick-card .quick-link{max-width:100%;white-space:nowrap;overflow-wrap:normal;word-break:normal;display:inline-flex;align-items:center;gap:7px}
+.quick-card .quick-link svg{flex:0 0 18px}
+.local-catalog-grid{grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr))}
+.local-catalog-grid>span{min-width:0}
+.local-catalog-grid b,.local-catalog-grid small{max-width:100%;overflow-wrap:anywhere;word-break:normal}
 
 /* Keep cards and their contents inside the available viewport/grid cell. */
 .page-shell,.page-head,.page-head>div,.page-actions,.panel-card,.widget-card,.quick-card,.search-panel,.profile-section,.user-row,.mobile-doc-card,.mobile-doc-top,.mobile-doc-meta,.notification-head,.notification-head>div,.notification-item,.systems-home-section,.system-home-card,.system-card-copy,.results-bar,.results-tools{min-width:0;box-sizing:border-box}
 .panel-card,.widget-card,.quick-card,.search-panel,.profile-section,.mobile-doc-card,.systems-home-section,.system-home-card{max-width:100%}
 .page-head h1,.page-head p,.panel-card h1,.panel-card h2,.panel-card h3,.panel-card p,.widget-card strong,.widget-card p,.quick-card strong,.quick-card span,.profile-section h2,.profile-section p,.user-row strong,.user-row small,.doc-code,.doc-description,.local-doc-description,.system-tag,.status-badge,.notification-item strong,.notification-item>span,.system-card-copy strong,.system-card-copy small,.modal-head-copy strong,.modal-head-copy small,.toast{overflow-wrap:anywhere;word-break:normal}
+.quick-card .quick-link{overflow-wrap:normal;word-break:normal}
 .doc-description,.local-doc-description{white-space:normal;line-height:1.42}
 .status-badge,.system-tag{max-width:100%;white-space:normal;text-align:center}
 .panel-card>h3:first-child,.profile-section h2{margin-top:0}
@@ -19,7 +25,7 @@ button:disabled,.btn:disabled{opacity:.55;cursor:not-allowed;filter:saturate(.75
 .results-bar{display:flex;align-items:center;justify-content:space-between;gap:10px 18px;flex-wrap:wrap}
 .results-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .doc-table{width:100%;border-collapse:separate;border-spacing:0}.doc-table th,.doc-table td{vertical-align:top}.doc-table td{line-height:1.4}.doc-table tbody tr:last-child td{border-bottom:0}
-.doc-table-wrap{max-width:100%;overflow:auto;overscroll-behavior:contain;border-radius:12px;scrollbar-gutter:stable}
+.doc-table-wrap{max-width:100%;overflow:auto;overscroll-behavior-x:contain;overscroll-behavior-y:auto;border-radius:12px;scrollbar-gutter:stable}
 .doc-table-wrap:focus-visible{outline:0;box-shadow:var(--focus-ring)}
 
 /* Whole-row/card document interaction with transient loading feedback. */
