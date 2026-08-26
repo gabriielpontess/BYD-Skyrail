@@ -33,7 +33,7 @@ export class DocumentViewerService{
     if(!blob)throw new Error('PDF não encontrado no armazenamento local. Importe o pacote documental correspondente.');
     const bytes=new Uint8Array(await blob.arrayBuffer());
     const pdf=await getDocument({data:bytes}).promise;
-    let pageNumber=1,scale=1,renderTask=null,renderSerial=0,closed=false,fitMode=true,resizeTimer=null;
+    let pageNumber=1,scale=1,renderTask=null,renderSerial=0,closed=false,fitMode=true,resizeTimer=null,firstFrameReady=false;
     const pointers=new Map();
     let dragStart=null,pinchStart=null;
     const title=`${doc.code} · ${doc.title}`;
@@ -58,7 +58,7 @@ export class DocumentViewerService{
         <span data-pdf-zoom class="local-pdf-zoom-indicator" aria-live="polite">Ajustar</span>
         <button class="btn btn-outline local-pdf-icon-button" data-pdf-in type="button" aria-label="Aumentar zoom">${viewerIcon('plus')}</button>
       </div>
-      <div class="local-pdf-stage" data-pdf-stage tabindex="0" aria-label="Página do PDF. Arraste para mover e use pinça ou controles para ampliar."><canvas data-pdf-canvas></canvas></div>
+      <div class="local-pdf-stage is-loading" data-pdf-stage tabindex="0" aria-label="Página do PDF. Arraste para mover e use pinça ou controles para ampliar."><canvas data-pdf-canvas hidden></canvas></div>
     </section>`;
     const viewer=backdrop.querySelector('.local-pdf-viewer');
     const stage=backdrop.querySelector('[data-pdf-stage]');
@@ -120,6 +120,7 @@ export class DocumentViewerService{
       canvas.style.width=`${Math.max(1,displayViewport.width)}px`;
       canvas.style.height=`${Math.max(1,displayViewport.height)}px`;
       ctx.drawImage(stagingCanvas,0,0);
+      if(!firstFrameReady){firstFrameReady=true;canvas.hidden=false;stage.classList.remove('is-loading')}
       if(previousCenter){
         const afterSize=cssCanvasSize();
         stage.scrollLeft=Math.max(0,previousCenter.x*afterSize.width-stage.clientWidth/2);
