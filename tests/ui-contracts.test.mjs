@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const root=new URL('../',import.meta.url);
-const [index,localUx,viewer,roleUx,uxAdjustments,notificationsUx,api,css]=await Promise.all([
+const [index,localUx,viewer,roleUx,uxAdjustments,notificationsUx,api,css,sw,headers]=await Promise.all([
   readFile(new URL('../index.html',import.meta.url),'utf8'),
   readFile(new URL('../js/local-documents-ux.js',import.meta.url),'utf8'),
   readFile(new URL('../js/documents/viewer-service.js',import.meta.url),'utf8'),
@@ -10,12 +10,22 @@ const [index,localUx,viewer,roleUx,uxAdjustments,notificationsUx,api,css]=await 
   readFile(new URL('../js/ux-adjustments.js',import.meta.url),'utf8'),
   readFile(new URL('../js/notifications-ux.js',import.meta.url),'utf8'),
   readFile(new URL('../js/api.js',import.meta.url),'utf8'),
-  readFile(new URL('../polish.css',import.meta.url),'utf8')
+  readFile(new URL('../polish.css',import.meta.url),'utf8'),
+  readFile(new URL('../sw.js',import.meta.url),'utf8'),
+  readFile(new URL('../public/_headers',import.meta.url),'utf8')
 ]);
 
 assert.match(index,/notifications-ux\.js/);
 assert.match(index,/role-ux\.js/);
 assert.match(index,/polish\.css/);
+assert.match(index,/retireLegacyServiceWorker/,'bootstrap web deve limpar Service Workers legados antes de carregar o app');
+assert.match(index,/getRegistrations\(\)/,'bootstrap deve localizar registros antigos');
+assert.match(index,/key\.startsWith\('byd-skyrail-'\)/,'bootstrap deve apagar apenas caches BYD Skyrail');
+assert.doesNotMatch(index,/serviceWorker\.register\(/,'web não deve voltar a registrar Service Worker');
+assert.match(sw,/registration\.unregister\(\)/,'sw legado deve se autoaposentar quando atualizado');
+assert.doesNotMatch(sw,/addEventListener\('fetch'/,'kill switch não pode interceptar novos requests');
+assert.match(headers,/\/index\.html[\s\S]*Cache-Control: no-store/,'shell web não deve permanecer no cache HTTP');
+assert.match(headers,/\/sw\.js[\s\S]*Cache-Control: no-store/,'kill switch deve ser sempre revalidado');
 assert.match(localUx,/<tr data-open-doc=/,'a linha inteira deve carregar data-open-doc');
 assert.match(localUx,/<article class="mobile-doc-card" data-open-doc=/,'o card móvel inteiro deve carregar data-open-doc');
 assert.match(localUx,/\['ADMIN','CONTROLLER'\]\.includes\(role\(\)\)/,'somente ADMIN e CONTROLLER podem importar');
