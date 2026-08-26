@@ -51,6 +51,9 @@ assert.match(notificationsUx,/button\.dataset\.notificationsBound==='1'\)return/
 assert.match(notificationsUx,/if\(badge\.textContent!==text\)badge\.textContent=text/,'contador deve ser idempotente para não gerar loop de MutationObserver');
 assert.match(notificationsUx,/if\(badge\.hidden!==hidden\)badge\.hidden=hidden/,'estado visual do contador deve mudar apenas quando necessário');
 assert.match(api,/\['ADMIN','CONTROLLER','USER'\]/);
+assert.match(api,/const UUID_RE=/,'histórico deve diferenciar UUID legado de id local do catálogo');
+assert.match(api,/documentRepository\.getById\(ref\)/,'histórico de documento local deve resolver o Código PW pelo catálogo');
+assert.match(api,/query=query\.eq\('code',code\)/,'id local não deve ser enviado para coluna UUID; histórico deve consultar pelo código');
 assert.match(css,/@media \(max-width:1100px\)/);
 assert.match(css,/@media \(max-width:820px\)/);
 assert.match(css,/@media \(max-width:560px\)/);
