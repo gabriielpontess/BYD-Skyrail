@@ -34,6 +34,14 @@ export class PackageStagingService{
     return row?.bytes ? new Uint8Array(row.bytes) : null;
   }
 
+  async remove(runId,name){
+    if(this.isNative()){
+      try{await Filesystem.deleteFile({path:this.path(runId,name),directory:Directory.Data})}catch{}
+      return;
+    }
+    await tx('readwrite',store=>new Promise((resolve,reject)=>{const r=store.delete(this.key(runId,name));r.onsuccess=()=>resolve();r.onerror=()=>reject(r.error)}));
+  }
+
   async clear(runId){
     if(this.isNative()){
       try{await Filesystem.rmdir({path:`${ROOT}/${safePart(runId)}`,directory:Directory.Data,recursive:true})}catch{}
