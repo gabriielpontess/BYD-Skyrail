@@ -33,7 +33,29 @@ export class DocumentFileService {
     if(this.isNative()){
       try{await Filesystem.stat({path:this.pathFor(document),directory:Directory.Data});return true}catch{return false}
     }
-    return !!(await webTx('readonly',store=>new Promise((resolve,reject)=>{const r=store.get(document.id);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})));
+    // Existence checks must never deserialize the stored PDF Blob. IndexedDB get()
+    // returns the entire row (including potentially very large technical drawings),
+    // which caused the web preview to freeze when checking many documents at boot.
+    return !!(await webTx('readonly',store=>new Promise((resolve,reject)=>{
+      const r=store.getKey(document.id);
+      r.onsuccess=()=>resolve(r.result);
+      r.onerror=()=>reject(r.error);
+    })));
+  }
+
+  async availableIds(documents=[]){
+    const wanted=new Set(documents.map(document=>String(document?.id||'')).filter(Boolean));
+    if(!wanted.size)return new Set();
+    if(this.isNative()){
+      const rows=await Promise.all(documents.map(async document=>[String(document.id),await this.has(document)]));
+      return new Set(rows.filter(([,available])=>available).map(([id])=>id));
+    }
+    const keys=await webTx('readonly',store=>new Promise((resolve,reject)=>{
+      const r=store.getAllKeys();
+      r.onsuccess=()=>resolve(r.result||[]);
+      r.onerror=()=>reject(r.error);
+    }));
+    return new Set(keys.map(String).filter(id=>wanted.has(id)));
   }
 
   async putBytes(document,bytes){
