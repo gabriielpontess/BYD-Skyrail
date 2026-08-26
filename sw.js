@@ -1,62 +1,18 @@
-const VERSION='1.4.1';
-const CACHE=`byd-skyrail-${VERSION}`;
-const INDEX='./index.html';
+// BYD Skyrail web Service Worker retirement shim.
+// Offline-first on Android is provided by the packaged Capacitor app and local storage,
+// so the browser preview must not retain a Service Worker that can mix old and new assets.
 
-async function cacheCurrentShell(){
-  const cache=await caches.open(CACHE);
-  const response=await fetch(INDEX,{cache:'reload'});
-  if(!response.ok)throw new Error(`Falha ao carregar shell: HTTP ${response.status}`);
-  const html=await response.clone().text();
-  await cache.put(INDEX,response.clone());
-  await cache.put('./',response.clone());
+self.addEventListener('install', event => {
+  event.waitUntil(self.skipWaiting());
+});
 
-  const assets=new Set(['./manifest.webmanifest']);
-  for(const match of html.matchAll(/(?:src|href)=["']([^"']+)["']/gi)){
-    const raw=match[1];
-    if(!raw||raw.startsWith('data:')||raw.startsWith('blob:')||raw.startsWith('#'))continue;
-    const url=new URL(raw,self.location.href);
-    if(url.origin!==self.location.origin)continue;
-    assets.add(url.pathname+url.search);
-  }
-
-  await Promise.all([...assets].map(async asset=>{
-    const assetResponse=await fetch(asset,{cache:'reload'});
-    if(!assetResponse.ok)throw new Error(`Falha ao pré-carregar ${asset}: HTTP ${assetResponse.status}`);
-    await cache.put(asset,assetResponse.clone());
-  }));
-}
-
-self.addEventListener('install',event=>event.waitUntil((async()=>{
-  await cacheCurrentShell();
-  await self.skipWaiting();
-})()));
-
-self.addEventListener('activate',event=>event.waitUntil((async()=>{
-  for(const key of await caches.keys()){
-    if(key.startsWith('byd-skyrail-')&&key!==CACHE)await caches.delete(key);
-  }
-  await self.clients.claim();
-})()));
-
-self.addEventListener('fetch',event=>{
-  if(event.request.method!=='GET')return;
-  const url=new URL(event.request.url);
-  if(url.origin!==self.location.origin)return;
-
-  event.respondWith((async()=>{
-    const cache=await caches.open(CACHE);
-
-    try{
-      // Sempre prefira a versão publicada mais recente quando houver rede.
-      // O cache existe como fallback offline, não como fonte primária online.
-      const response=await fetch(event.request,{cache:'no-store'});
-      if(response.ok)await cache.put(event.request,response.clone());
-      return response;
-    }catch{
-      if(event.request.mode==='navigate'){
-        return await cache.match('./')||await cache.match(INDEX)||Response.error();
-      }
-      return await cache.match(event.request)||Response.error();
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    for (const key of await caches.keys()) {
+      if (key.startsWith('byd-skyrail-')) await caches.delete(key);
     }
+    await self.registration.unregister();
   })());
 });
+
+// Intentionally no fetch handler: every request falls through to the network/runtime.
