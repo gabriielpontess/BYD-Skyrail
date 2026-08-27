@@ -5,6 +5,27 @@ const modalState=new WeakMap();
 const FOCUSABLE='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 const CLOSE_SELECTOR='[data-close],[data-ux-close],[data-import-close],[data-packager-close],[data-pdf-close]';
 
+function cachedMember(){try{return JSON.parse(localStorage.getItem('byd-skyrail-member-cache')||'null')}catch{return null}}
+function currentRole(){return String(cachedMember()?.role||'').toUpperCase()}
+function routeName(){return(location.hash.replace(/^#\/?/,'').split('?')[0]||'home')}
+function routeAllowed(role,route){
+  if(['home','documents','profile'].includes(route))return true;
+  if(route==='audit')return role==='ADMIN';
+  if(route==='controller-updates')return role==='CONTROLLER';
+  return false;
+}
+function sanitizeRestrictedUi(){
+  const member=cachedMember();
+  if(!member||!$('#page'))return;
+  const role=currentRole(),route=routeName();
+  $$('[data-document-packager]').forEach(button=>{if(!(role==='ADMIN'&&route==='audit'))button.remove()});
+  $$('[data-local-import]').forEach(button=>{
+    const allowed=(role==='ADMIN'&&route==='audit')||(role==='CONTROLLER'&&route==='controller-updates');
+    if(!allowed)button.remove();
+  });
+  if(!routeAllowed(role,route)&&location.hash!=='#/home')location.hash='#/home';
+}
+
 function isVisible(element){
   if(!element?.isConnected||element.classList.contains('hidden'))return false;
   const style=getComputedStyle(element);
@@ -165,6 +186,8 @@ if(document.body)new MutationObserver(records=>{
   syncModalStack();
 }).observe(document.body,{childList:true,subtree:false});
 
-addEventListener('hashchange',()=>queueMicrotask(()=>scanModals()));
-addEventListener('load',()=>scanModals());
-scanModals();
+const appRoot=$('#app');
+if(appRoot)new MutationObserver(()=>queueMicrotask(sanitizeRestrictedUi)).observe(appRoot,{childList:true,subtree:true});
+addEventListener('hashchange',()=>{queueMicrotask(()=>scanModals());queueMicrotask(sanitizeRestrictedUi)});
+addEventListener('load',()=>{scanModals();sanitizeRestrictedUi()});
+scanModals();sanitizeRestrictedUi();
