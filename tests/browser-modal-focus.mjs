@@ -31,6 +31,7 @@ class CDP{
   close(){try{this.ws.close()}catch{}}
 }
 async function target(){for(let i=0;i<100;i++){try{const list=await(await fetch(`http://${HOST}:${DEBUG_PORT}/json/list`)).json();const page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl);if(page)return page}catch{}await sleep(100)}throw new Error('Debugger do Chrome indisponível.');}
+function cachedMember(role){return{display_name:`Teste ${role}`,role,user_id:`00000000-0000-4000-8000-${role==='ADMIN'?'000000000001':role==='CONTROLLER'?'000000000002':'000000000003'}`,user:{email:`${role.toLowerCase()}@local.test`,user_metadata:{cargo:`Cargo ${role}`}}}}
 
 async function main(){
   const chromePath=await findChrome();
@@ -40,7 +41,7 @@ async function main(){
   chrome=spawn(chromePath,args,{stdio:'ignore'});
   const cdp=new CDP((await target()).webSocketDebuggerUrl);await cdp.connect();await cdp.send('Page.enable');await cdp.send('Runtime.enable');
   const evaluate=async expression=>{const r=await cdp.send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true});if(r.exceptionDetails)throw new Error(r.exceptionDetails.text);return r.result?.value};
-  const waitFor=async expression=>{for(let i=0;i<80;i++){if(await evaluate(`Boolean(${expression})`))return;await sleep(50)}throw new Error(`Condição não atingida: ${expression}`)};
+  const waitFor=async expression=>{for(let i=0;i<100;i++){try{if(await evaluate(`Boolean(${expression})`))return}catch{}await sleep(50)}throw new Error(`Condição não atingida: ${expression}`)};
   await cdp.send('Page.navigate',{url:BASE});await waitFor(`document.querySelector('.login-card')`);await waitFor(`performance.getEntriesByType('resource').some(r=>r.name.includes('systemic-ux-guard'))`);
 
   await evaluate(`(()=>{const opener=document.createElement('button');opener.id='focus-opener';opener.textContent='Abrir teste';document.querySelector('#app').append(opener);opener.focus();const b=document.createElement('div');b.id='focus-modal-1';b.className='modal-backdrop';b.innerHTML='<section class="modal"><header class="modal-head"><div class="modal-head-copy"><strong>Modal primário</strong></div></header><div class="modal-body" style="min-height:520px"><button id="first-action">Primeira ação</button><button id="last-action" style="display:block;margin-top:460px">Última ação</button></div></section>';document.body.append(b);return true})()`);
@@ -64,7 +65,6 @@ async function main(){
   await evaluate(`document.querySelector('#focus-modal-1').remove()`);await waitFor(`document.querySelector('#app').inert===false`);await sleep(80);
   assert.equal(await evaluate(`document.activeElement?.id`),'focus-opener','fechar último modal deve restaurar foco ao disparador');
 
-  // Formulário assíncrono: nem o botão Fechar pode remover a janela durante a operação.
   await evaluate(`(()=>{const b=document.createElement('div');b.id='async-modal';b.className='modal-backdrop';b.innerHTML='<section class="modal"><header class="modal-head"><div class="modal-head-copy"><strong>Operação assíncrona</strong></div><button id="async-close" data-close type="button">Fechar</button></header><div class="modal-body"><form id="async-form"><button id="async-submit" type="submit">Salvar</button></form></div></section>';const form=b.querySelector('#async-form');form.onsubmit=async event=>{event.preventDefault();await new Promise(resolve=>setTimeout(resolve,300));b.dataset.completed='1'};b.querySelector('#async-close').onclick=()=>b.remove();document.body.append(b);return true})()`);
   await waitFor(`document.querySelector('#async-form')?.dataset.systemicAsyncGuard==='1'`);
   await evaluate(`document.querySelector('#async-form').requestSubmit()`);await waitFor(`document.querySelector('#async-modal')?.dataset.operationRunning==='1'`);
@@ -72,10 +72,33 @@ async function main(){
   assert.equal(await evaluate(`Boolean(document.querySelector('#async-modal'))`),true,'botão Fechar não pode vencer uma operação assíncrona');
   await waitFor(`document.querySelector('#async-modal')?.dataset.completed==='1'&&document.querySelector('#async-modal')?.dataset.operationRunning==='0'`);
   await evaluate(`document.querySelector('#async-close').click()`);await waitFor(`!document.querySelector('#async-modal')`);
-
   assert.equal(await evaluate(`document.body.classList.contains('has-modal-open')`),false,'body deve liberar scroll após o último modal');
+
+  // Rotas restritas: simula execução offline para usar somente o membro em cache.
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`try{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get(){return false}})}catch{}`});
+  async function restrictedRoute(role,route){
+    await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember(role)))})`);
+    await cdp.send('Page.navigate',{url:`${BASE}#/${route}`});
+    await waitFor(`document.querySelector('.hero')&&location.hash==='#/home'`);
+    const state=await evaluate(`({hash:location.hash,packager:!!document.querySelector('[data-document-packager]'),importAction:!!document.querySelector('[data-local-import]'),auditNav:!!document.querySelector('.desktop-nav [data-nav="audit"]'),controllerNav:!!document.querySelector('[data-controller-updates]')})`);
+    assert.equal(state.hash,'#/home',`${role} em ${route} deve ser normalizado para Home`);
+    assert.equal(state.packager,false,`${role} não pode expor Packager fora da Auditoria ADMIN`);
+    assert.equal(state.importAction,false,`${role} não pode expor Importação na Home após rota inválida`);
+    return state;
+  }
+  const controller=await restrictedRoute('CONTROLLER','audit');
+  assert.equal(controller.auditNav,false,'CONTROLLER não pode receber navegação de Auditoria');
+  assert.equal(controller.controllerNav,true,'CONTROLLER deve preservar sua navegação própria após normalização');
+  const admin=await restrictedRoute('ADMIN','controller-updates');
+  assert.equal(admin.auditNav,true,'ADMIN deve preservar navegação de Auditoria');
+  assert.equal(admin.controllerNav,false,'ADMIN não pode receber navegação de Controller');
+  const user=await restrictedRoute('USER','audit');
+  assert.equal(user.auditNav,false,'USER não pode receber Auditoria');
+  assert.equal(user.controllerNav,false,'USER não pode receber Atualizações');
+  await restrictedRoute('USER','rota-inexistente');
+
   assert.deepEqual(await evaluate(`globalThis.__BYD_BOOT_DIAG?.errors||[]`),[],'nenhum erro de bootstrap deve surgir');
-  cdp.close();console.log('browser-modal-focus.mjs: ok — foco, pilha modal, operação assíncrona e viewport baixo validados em Chrome real');
+  cdp.close();console.log('browser-modal-focus.mjs: ok — foco, pilha modal, operação assíncrona, viewport baixo e rotas por perfil validados em Chrome real');
 }
 
 let failure=null;try{await main()}catch(error){failure=error}finally{await stop(chrome);await stop(preview);if(profileDir)await rm(profileDir,{recursive:true,force:true}).catch(()=>{})}if(failure)throw failure;
