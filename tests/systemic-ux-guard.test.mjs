@@ -17,6 +17,8 @@ assert.match(guard,/finally\{viewerOpening=false\}/,'falha ou conclusão do carr
 assert.match(guard,/function repairStaleRouteSurface/,'resposta assíncrona atrasada deve possuir reparo de rota');
 assert.match(guard,/staleAudit/,'Auditoria não pode sobrescrever uma rota atual após await antigo');
 assert.match(guard,/staleController/,'Controller não pode permanecer renderizado depois de troca de rota');
+assert.match(guard,/staleDocuments/,'Documentos não pode sobrescrever Home ou Perfil após await antigo');
+assert.match(guard,/\.local-document-search-panel,\[data-local-layout\]/,'reparo deve reconhecer as superfícies locais de Documentos');
 assert.match(guard,/new HashChangeEvent\('hashchange'\)/,'reparo deve reutilizar o caminho canônico de renderização');
 assert.match(guard,/function modalRouteAllowed/,'modais assíncronos restritos devem validar a rota no momento em que chegam ao DOM');
 assert.match(guard,/#document-admin-form,#user-admin-form/,'editores administrativos atrasados devem ser reconhecidos');
