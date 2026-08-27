@@ -12,7 +12,21 @@ const canImport=()=>{const route=routeInfo().name;return(role()==='ADMIN'&&route
 const PAGE_SIZE=100;
 const documentsMedia=matchMedia('(max-width: 767px)');
 let enhancing=false;
-const localState={query:'',discipline:'ALL',documentType:'ALL',approvalStatus:'ALL',page:1};
+const localState={query:'',discipline:'ALL',documentType:'ALL',approvalStatus:'ALL',page:1,sessionKey:null};
+
+function memberIdentity(){
+  const current=member();
+  if(!current)return'logged-out';
+  return String(current.user_id||current.id||current.user?.id||current.user?.email||current.email||'authenticated');
+}
+function resetLocalState(){localState.query='';localState.discipline='ALL';localState.documentType='ALL';localState.approvalStatus='ALL';localState.page=1}
+function syncLocalSessionState(){
+  const next=memberIdentity();
+  if(localState.sessionKey===next)return false;
+  localState.sessionKey=next;
+  resetLocalState();
+  return true;
+}
 
 function approvalBadgeClass(value){
   const status=fold(value);
@@ -90,6 +104,7 @@ function mobileRows(docs,systemMap){
 
 async function renderLocalDocumentsPage(){
   if(routeInfo().name!=='documents')return;
+  syncLocalSessionState();
   const page=$('#page');if(!page||page.dataset.localDocumentsRendering==='1')return;
   page.dataset.localDocumentsRendering='1';
   try{
@@ -125,7 +140,7 @@ async function renderLocalDocumentsPage(){
           <label><span>Status</span><select data-local-approval-status><option value="ALL">Todos</option>${approvalStatuses.map(value=>`<option value="${esc(value)}" ${value===localState.approvalStatus?'selected':''}>${esc(value)}</option>`).join('')}</select></label>
         </div>
       </section>
-      <div class="results-bar"><strong>${visible.length.toLocaleString('pt-BR')} documento(s) encontrado(s)</strong>${visible.length?`<span class="subtle">Exibindo ${(start+1).toLocaleString('pt-BR')}–${end.toLocaleString('pt-BR')}</span>`:''}</div>
+      <div class="results-bar"><b data-local-results-count>${visible.length.toLocaleString('pt-BR')} documento(s) encontrado(s)</b>${visible.length?`<span class="subtle">Exibindo ${(start+1).toLocaleString('pt-BR')}–${end.toLocaleString('pt-BR')}</span>`:''}</div>
       ${resultMarkup}${pagination}`;
     const rerender=()=>{page.dataset.localDocumentsRendering='0';renderLocalDocumentsPage()};
     const resetAndRerender=()=>{localState.page=1;rerender()};
@@ -140,10 +155,10 @@ async function renderLocalDocumentsPage(){
   finally{page.dataset.localDocumentsRendering='0'}
 }
 
-async function enhance(){if(enhancing)return;enhancing=true;try{await showCatalogSummary();addImportAction();if(routeInfo().name==='documents'&&!$('.local-document-search-panel'))await renderLocalDocumentsPage()}finally{enhancing=false}}
+async function enhance(){if(enhancing)return;enhancing=true;try{syncLocalSessionState();await showCatalogSummary();addImportAction();if(routeInfo().name==='documents'&&!$('.local-document-search-panel'))await renderLocalDocumentsPage()}finally{enhancing=false}}
 new MutationObserver(()=>queueMicrotask(enhance)).observe(document.querySelector('#app'),{childList:true,subtree:true});
 document.addEventListener('byd:render-local-documents',()=>{const page=$('#page');if(page)delete page.dataset.localDocumentsRendering;renderLocalDocumentsPage()});
-addEventListener('hashchange',()=>{localState.page=1;const page=$('#page');if(page)delete page.dataset.localDocumentsRendering;enhance()});
+addEventListener('hashchange',()=>{syncLocalSessionState();localState.page=1;const page=$('#page');if(page)delete page.dataset.localDocumentsRendering;enhance()});
 addEventListener('load',enhance);enhance();
 documentsMedia.addEventListener?.('change',()=>{if(routeInfo().name!=='documents')return;localState.page=1;const page=$('#page');if(page)delete page.dataset.localDocumentsRendering;renderLocalDocumentsPage()});
 
