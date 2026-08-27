@@ -31,7 +31,7 @@ class CDP{
   close(){try{this.ws.close()}catch{}}
 }
 async function target(){for(let i=0;i<100;i++){try{const list=await(await fetch(`http://${HOST}:${DEBUG_PORT}/json/list`)).json();const page=list.find(x=>x.type==='page'&&x.webSocketDebuggerUrl);if(page)return page}catch{}await sleep(100)}throw new Error('Debugger do Chrome indisponível.');}
-function cachedMember(role){return{display_name:`Teste ${role}`,role,user_id:`00000000-0000-4000-8000-${role==='ADMIN'?'000000000001':role==='CONTROLLER'?'000000000002':'000000000003'}`,user:{email:`${role.toLowerCase()}@local.test`,user_metadata:{cargo:`Cargo ${role}`}}}}
+function cachedMember(role,cargo=`Cargo ${role}`){return{display_name:`Teste ${role}`,role,user_id:`00000000-0000-4000-8000-${role==='ADMIN'?'000000000001':role==='CONTROLLER'?'000000000002':'000000000003'}`,user:{email:`${role.toLowerCase()}@local.test`,user_metadata:{cargo}}}}
 
 async function main(){
   const chromePath=await findChrome();
@@ -74,11 +74,12 @@ async function main(){
   await evaluate(`document.querySelector('#async-close').click()`);await waitFor(`!document.querySelector('#async-modal')`);
   assert.equal(await evaluate(`document.body.classList.contains('has-modal-open')`),false,'body deve liberar scroll após o último modal');
 
-  // Rotas restritas: simula execução offline para usar somente o membro em cache.
   await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`try{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get(){return false}})}catch{}`});
-  async function restrictedRoute(role,route){
-    await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember(role)))})`);
-    await cdp.send('Page.navigate',{url:`${BASE}#/${route}`});
+  async function restrictedRoute(role,route,cargo){
+    await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember(role,cargo)))})`);
+    // Query string muda a URL de documento e força um boot completo; mudar só o hash
+    // manteria a tela de Login anterior e não exercitaria o bootstrap offline.
+    await cdp.send('Page.navigate',{url:`${BASE}?role=${encodeURIComponent(role)}&route=${encodeURIComponent(route)}#/${route}`});
     await waitFor(`document.querySelector('.hero')&&location.hash==='#/home'`);
     const state=await evaluate(`({hash:location.hash,packager:!!document.querySelector('[data-document-packager]'),importAction:!!document.querySelector('[data-local-import]'),auditNav:!!document.querySelector('.desktop-nav [data-nav="audit"]'),controllerNav:!!document.querySelector('[data-controller-updates]')})`);
     assert.equal(state.hash,'#/home',`${role} em ${route} deve ser normalizado para Home`);
@@ -97,8 +98,15 @@ async function main(){
   assert.equal(user.controllerNav,false,'USER não pode receber Atualizações');
   await restrictedRoute('USER','rota-inexistente');
 
+  // Cargo textual não concede privilégio: USER chamado/cadastrado como Administrador
+  // continua sem controles administrativos no Perfil.
+  await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember('USER','Administrador de documentação')))})`);
+  await cdp.send('Page.navigate',{url:`${BASE}?role=user-cargo-admin#/profile`});
+  await waitFor(`location.hash==='#/profile'&&document.querySelector('.profile-layout')`);await sleep(120);
+  assert.equal(await evaluate(`Boolean(document.querySelector('[data-ux-add-user],.ux-admin-users-entry'))`),false,'cargo com palavra Administrador não pode conceder UI ADMIN a USER');
+
   assert.deepEqual(await evaluate(`globalThis.__BYD_BOOT_DIAG?.errors||[]`),[],'nenhum erro de bootstrap deve surgir');
-  cdp.close();console.log('browser-modal-focus.mjs: ok — foco, pilha modal, operação assíncrona, viewport baixo e rotas por perfil validados em Chrome real');
+  cdp.close();console.log('browser-modal-focus.mjs: ok — foco, pilha modal, operação assíncrona, viewport baixo e rotas/permissões por perfil validados em Chrome real');
 }
 
 let failure=null;try{await main()}catch(error){failure=error}finally{await stop(chrome);await stop(preview);if(profileDir)await rm(profileDir,{recursive:true,force:true}).catch(()=>{})}if(failure)throw failure;
