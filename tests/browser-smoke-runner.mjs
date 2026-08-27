@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 const smoke=fileURLToPath(new URL('./browser-smoke.mjs',import.meta.url));
 const systemicRaces=fileURLToPath(new URL('./browser-systemic-races.mjs',import.meta.url));
+const finalGates=fileURLToPath(new URL('./browser-final-gates.mjs',import.meta.url));
 const retryable=/Chrome abriu, mas o endpoint de depuração não ficou disponível|Debugger do Chrome indisponível/;
 
 async function run(script,attempt,label){
@@ -29,3 +30,4 @@ async function runWithRetry(script,label){
 
 await runWithRetry(smoke,'browser-smoke');
 await runWithRetry(systemicRaces,'browser-systemic-races');
+await runWithRetry(finalGates,'browser-final-gates');
