@@ -8,7 +8,7 @@ const fold=value=>String(value??'').trim().normalize('NFD').replace(/[\u0300-\u0
 const routeInfo=()=>{const raw=location.hash.replace(/^#\/?/,'');const [name='',query='']=raw.split('?');return{name:name||'home',params:new URLSearchParams(query)}};
 const member=()=>{try{return JSON.parse(localStorage.getItem('byd-skyrail-member-cache')||'null')}catch{return null}};
 const role=()=>String(member()?.role||'USER').toUpperCase();
-const canImport=()=>['ADMIN','CONTROLLER'].includes(role());
+const canImport=()=>{const route=routeInfo().name;return(role()==='ADMIN'&&route==='audit')||(role()==='CONTROLLER'&&route==='controller-updates')};
 const PAGE_SIZE=100;
 const documentsMedia=matchMedia('(max-width: 767px)');
 let enhancing=false;
@@ -57,6 +57,7 @@ function importModal(){
   startButton.onclick=async()=>{
     const file=fileInput.files?.[0],status=modal.querySelector('[data-import-status]');
     status.classList.remove('error','success');
+    if(!canImport()){status.textContent='Sua sessão não possui permissão para importar nesta área.';status.classList.add('error');return}
     if(!file){status.textContent='Selecione um arquivo .zip antes de iniciar.';status.classList.add('error');return}
     setRunning(true);startButton.textContent='Importando';
     try{
@@ -72,12 +73,11 @@ function importModal(){
 }
 
 function addImportAction(){
-  const route=routeInfo().name;
-  if(!canImport()||!['audit','controller-updates'].includes(route)||$('[data-local-import]'))return;
+  if(!canImport()||$('[data-local-import]'))return;
   const page=$('#page');if(!page)return;
   const actions=$('.page-actions',page)||$('.audit-tabs',page)||$('.page-head',page);if(!actions)return;
   const button=document.createElement('button');button.className='btn btn-primary';button.type='button';button.dataset.localImport='';button.textContent='Importar atualização';
-  button.onclick=()=>importModal().classList.remove('hidden');actions.append(button);
+  button.onclick=()=>{if(canImport())importModal().classList.remove('hidden')};actions.append(button);
 }
 
 function desktopRows(docs,systemMap){
