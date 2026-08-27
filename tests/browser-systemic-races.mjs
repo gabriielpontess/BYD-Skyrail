@@ -73,14 +73,14 @@ async function main(){
   await waitFor(`document.querySelector('#race-async')?.dataset.done==='1'&&document.querySelector('#race-async')?.dataset.operationRunning==='0'`,'operação concluída');
   await evaluate(`document.querySelector('#race-close').click()`);await waitFor(`!document.querySelector('#race-async')`,'modal liberado');
 
-  // Todo data-sync deve compartilhar single-flight, não apenas o card rápido da Home.
-  await evaluate(`(()=>{const b=document.createElement('button');b.id='race-sync';b.dataset.sync='';b.textContent='Sincronizar';b.onclick=async()=>{b.dataset.calls=String(Number(b.dataset.calls||0)+1);await new Promise(r=>setTimeout(r,220));b.dataset.done='1'};document.querySelector('#app').append(b)})()`);
-  await waitFor(`document.querySelector('#race-sync')?.dataset.systemicAsyncClickGuard==='1'`,'data-sync protegido');
-  await evaluate(`document.querySelector('#race-sync').click();document.querySelector('#race-sync').click()`);
-  await waitFor(`document.querySelector('#race-sync')?.dataset.operationRunning==='1'`,'sync em execução');
-  assert.equal(await evaluate(`document.querySelector('#race-sync').dataset.calls`),'1','duplo disparo de data-sync deve executar uma única sincronização');
-  await waitFor(`document.querySelector('#race-sync')?.dataset.done==='1'&&document.querySelector('#race-sync')?.dataset.operationRunning==='0'`,'sync liberado');
-  await evaluate(`document.querySelector('#race-sync')?.remove()`);
+  // Single-flight genérico de ação de página sem cair no desvio especial de sync offline.
+  await evaluate(`(()=>{const b=document.createElement('button');b.id='race-refresh';b.dataset.refresh='';b.textContent='Atualizar';b.onclick=async()=>{b.dataset.calls=String(Number(b.dataset.calls||0)+1);await new Promise(r=>setTimeout(r,220));b.dataset.done='1'};document.querySelector('#app').append(b)})()`);
+  await waitFor(`document.querySelector('#race-refresh')?.dataset.systemicAsyncClickGuard==='1'`,'refresh protegido');
+  await evaluate(`document.querySelector('#race-refresh').click();document.querySelector('#race-refresh').click()`);
+  await waitFor(`document.querySelector('#race-refresh')?.dataset.operationRunning==='1'`,'refresh em execução');
+  assert.equal(await evaluate(`document.querySelector('#race-refresh').dataset.calls`),'1','duplo disparo deve executar uma única ação assíncrona');
+  await waitFor(`document.querySelector('#race-refresh')?.dataset.done==='1'&&document.querySelector('#race-refresh')?.dataset.operationRunning==='0'`,'refresh liberado');
+  await evaluate(`document.querySelector('#race-refresh')?.remove()`);
 
   async function restricted(role,route,cargo){
     await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(member(role,cargo)))})`);
@@ -92,11 +92,16 @@ async function main(){
   const admin=await restricted('ADMIN','controller-updates');assert.equal(admin.audit,true);assert.equal(admin.controller,false);assert.equal(admin.packager,false);assert.equal(admin.importer,false);
   const user=await restricted('USER','audit');assert.equal(user.audit,false);assert.equal(user.controller,false);
 
+  // O sincronizador V1 é local-first: offline deve consultar o catálogo, não alegar falta de internet.
+  await waitFor(`document.querySelector('[data-sync]')?.dataset.systemicAsyncClickGuard==='1'`,'sync real da Home protegido');
+  await evaluate(`document.querySelector('[data-sync]').click()`);
+  await waitFor(`document.querySelector('#toast')?.textContent.includes('Catálogo local verificado')`,'feedback de sync local offline');
+  assert.equal(await evaluate(`document.querySelector('#toast').textContent.includes('Sem internet para sincronizar')`),false,'sync local offline não pode usar mensagem legada de internet');
+
   await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(member('USER','Administrador de documentação')))})`);
   await cdp.send('Page.navigate',{url:`${BASE}?race=cargo-admin#/profile`});await waitFor(`location.hash==='#/profile'&&document.querySelector('.profile-layout')`,'Perfil USER');await sleep(100);
   assert.equal(await evaluate(`Boolean(document.querySelector('[data-ux-add-user],.ux-admin-users-entry'))`),false,'cargo não pode conceder ADMIN');
 
-  // Processamento real de PNG não pode concluir sobre DOM obsoleto após sair do Perfil.
   await waitFor(`document.querySelector('#avatar-input')?.dataset.systemicAvatarGuard==='1'`,'avatar protegido');
   const avatarRace=await evaluate(`(async()=>{const input=document.querySelector('#avatar-input');const canvas=document.createElement('canvas');canvas.width=4;canvas.height=4;const ctx=canvas.getContext('2d');ctx.fillRect(0,0,4,4);const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));const dt=new DataTransfer();dt.items.add(new File([blob],'race-avatar.png',{type:'image/png'}));input.files=dt.files;const pending=input.onchange({currentTarget:input});location.hash='#/home';await pending;await new Promise(r=>setTimeout(r,80));return{hash:location.hash,profile:!!document.querySelector('#profile-photo'),saved:!!localStorage.getItem('byd-skyrail:avatar:race-user')}})()`);
   assert.equal(avatarRace.hash,'#/home','troca de rota deve prevalecer sobre processamento de avatar');
@@ -104,7 +109,6 @@ async function main(){
   assert.equal(avatarRace.saved,false,'avatar invalidado pela troca de rota não deve persistir resultado obsoleto');
   await waitFor(`document.querySelector('.hero')`,'Home após corrida de avatar');
 
-  // Retorna ao Perfil para exercitar reparos de superfície obsoleta.
   await evaluate(`location.hash='#/profile'`);await waitFor(`document.querySelector('.profile-layout')`,'Perfil restaurado');
   await evaluate(`(()=>{const stale=document.createElement('div');stale.id='admin-content';stale.textContent='AUDITORIA ATRASADA';document.querySelector('#page').append(stale)})()`);
   await waitFor(`location.hash==='#/profile'&&!document.querySelector('#admin-content')&&document.querySelector('.profile-layout')`,'Auditoria atrasada descartada');
@@ -120,7 +124,7 @@ async function main(){
 
   assert.deepEqual(await evaluate(`globalThis.__BYD_BOOT_DIAG?.errors||[]`),[],'nenhum erro de bootstrap deve surgir');
   cdp.close();
-  console.log('browser-systemic-races.mjs: ok — foco, single-flight, sync, avatar stale, stale async UI, viewer reentrante e permissões validados em Chrome real');
+  console.log('browser-systemic-races.mjs: ok — foco, single-flight, sync local offline, avatar stale, stale async UI, viewer reentrante e permissões validados em Chrome real');
 }
 
 let failure=null;try{await main()}catch(error){failure=error}finally{await stop(chrome);await stop(preview);if(profileDir)await rm(profileDir,{recursive:true,force:true}).catch(()=>{})}if(failure)throw failure;
