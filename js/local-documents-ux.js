@@ -140,7 +140,7 @@ async function renderLocalDocumentsPage(){
           <label><span>Status</span><select data-local-approval-status><option value="ALL">Todos</option>${approvalStatuses.map(value=>`<option value="${esc(value)}" ${value===localState.approvalStatus?'selected':''}>${esc(value)}</option>`).join('')}</select></label>
         </div>
       </section>
-      <div class="results-bar"><b data-local-results-count>${visible.length.toLocaleString('pt-BR')} documento(s) encontrado(s)</b>${visible.length?`<span class="subtle">Exibindo ${(start+1).toLocaleString('pt-BR')}–${end.toLocaleString('pt-BR')}</span>`:''}</div>
+      <div class="results-bar"><strong data-local-results-count>${visible.length.toLocaleString('pt-BR')} documento(s) encontrado(s)</strong>${visible.length?`<span class="subtle">Exibindo ${(start+1).toLocaleString('pt-BR')}–${end.toLocaleString('pt-BR')}</span>`:''}</div>
       ${resultMarkup}${pagination}`;
     const rerender=()=>{page.dataset.localDocumentsRendering='0';renderLocalDocumentsPage()};
     const resetAndRerender=()=>{localState.page=1;rerender()};
