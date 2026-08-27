@@ -35,6 +35,10 @@ assert.match(guard,/\[data-refresh\]/,'Atualizar Auditoria deve passar pelo guar
 assert.match(guard,/function wrapPageAsyncActions/,'onclick assíncrono deve receber trava pelo tempo real da Promise');
 assert.match(guard,/button\.disabled=true/,'ação concorrente deve ser desabilitada durante execução');
 assert.match(guard,/await original\.call\(this,event\)/,'trava deve acompanhar a Promise original, sem timeout arbitrário');
+assert.match(guard,/import \{ syncAll \} from '\.\/sync\.js'/,'guard deve reutilizar o sincronizador local-first existente');
+assert.match(guard,/function runOfflineLocalSync/,'sincronização manual offline deve possuir caminho local explícito');
+assert.match(guard,/isLocalSync&&!navigator\.onLine/,'somente ações de sync devem desviar para o catálogo local quando offline');
+assert.match(guard,/Catálogo local verificado/,'feedback offline não pode afirmar falta de internet para uma operação local');
 assert.match(guard,/function guardAvatarInput/,'avatar deve usar tratamento sistêmico contra conclusão obsoleta');
 assert.match(guard,/systemicAvatarGuard/,'input de avatar deve ser assumido uma única vez pelo guard');
 assert.match(guard,/const generation=\+\+avatarGeneration/,'cada processamento de avatar deve possuir geração própria');
