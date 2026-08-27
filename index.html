@@ -117,12 +117,15 @@
       const canBoot = await retireLegacyServiceWorker();
       if (!canBoot) return;
       await import('./js/users/invite-onboarding.js');
+      // A apresentação de role precisa observar o #app antes de app.js iniciar seu
+      // boot assíncrono. Assim, o primeiro shell de CONTROLLER já é normalizado na
+      // mesma entrega de mutação e nenhum cargo transitório vence a UI canônica.
+      await import('./js/role-ux.js');
       await import('./js/app.js');
       await import('./js/systems-ux.js');
       await import('./js/ux-adjustments.js');
       await import('./js/local-documents-ux.js');
       await import('./js/document-packager-ux.js');
-      await import('./js/role-ux.js');
       await import('./js/notifications-ux.js');
       await import('./js/ui-refinement.js');
       await import('./js/systemic-ux-guard.js');
