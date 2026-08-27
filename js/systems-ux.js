@@ -205,6 +205,7 @@ function systemName(id) {
 
 function applyDocumentSystemPresentation() {
   if (route().name !== 'documents') return;
+  if ($('#page')?.dataset.localDocumentsOwner === 'local-first') return;
   const selected = selectedSystemId();
   const byId = new Map(docs.map(doc => [String(doc.id), doc]));
   const byCode = new Map();
@@ -268,6 +269,7 @@ async function enhanceDocuments() {
   if (route().name !== 'documents') return;
   if (!await waitForView('.search-panel')) return;
   await refreshData();
+  if ($('#page')?.dataset.localDocumentsOwner === 'local-first') return;
   renderSystemFilter();
   applyDocumentSystemPresentation();
 }
