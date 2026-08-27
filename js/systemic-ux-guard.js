@@ -1,9 +1,27 @@
+import { documentViewerService } from './documents/viewer-service.js';
+
 const $=(selector,root=document)=>root.querySelector(selector);
 const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 
 const modalState=new WeakMap();
 const FOCUSABLE='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 const CLOSE_SELECTOR='[data-close],[data-ux-close],[data-import-close],[data-packager-close],[data-pdf-close]';
+
+// Single-flight do viewer: cliques/Enter/notificações concorrentes compartilham a
+// mesma trava. Enquanto um PDF carrega ou permanece aberto, nenhuma segunda
+// instância pode ser criada. A trava é liberada automaticamente após o fechamento.
+const originalViewerOpen=documentViewerService.open.bind(documentViewerService);
+let viewerOpening=false;
+documentViewerService.open=async function(id){
+  const active=$('.local-pdf-backdrop');
+  if(viewerOpening||active){
+    active?.querySelector('[data-pdf-stage]')?.focus?.({preventScroll:true});
+    return false;
+  }
+  viewerOpening=true;
+  try{return await originalViewerOpen(id)}
+  finally{viewerOpening=false}
+};
 
 function cachedMember(){try{return JSON.parse(localStorage.getItem('byd-skyrail-member-cache')||'null')}catch{return null}}
 function currentRole(){return String(cachedMember()?.role||'').toUpperCase()}
