@@ -50,12 +50,12 @@ assert.match(localUx,/isMobile\?mobileRows\(pageDocs,systemMap\):desktopRows\(pa
 assert.match(localUx,/<tr data-open-doc=/,'a linha inteira deve carregar data-open-doc');
 assert.match(localUx,/<article class="mobile-doc-card" data-open-doc=/,'o card móvel inteiro deve carregar data-open-doc');
 assert.match(localUx,/role="button" aria-label="Abrir documento/,'linhas e cards inteiros devem expor semântica clicável');
-assert.match(localUx,/\['ADMIN','CONTROLLER'\]\.includes\(role\(\)\)/,'somente ADMIN e CONTROLLER podem importar');
+assert.match(localUx,/role\(\)==='ADMIN'&&route==='audit'/,'ADMIN só pode importar pela Auditoria');
+assert.match(localUx,/role\(\)==='CONTROLLER'&&route==='controller-updates'/,'CONTROLLER só pode importar por Atualizações');
 assert.match(localUx,/requestedSystem&&systems\.some/,'Sistema inválido na URL deve ser validado contra o catálogo antes de filtrar');
 assert.match(localUx,/modal\.dataset\.operationRunning=value\?'1':'0'/,'importação deve declarar operação em andamento para impedir fechamento acidental');
 assert.match(localUx,/const close=\(\)=>\{if\(!running\)modal\.classList\.add\('hidden'\)\}/,'modal de importação não pode fechar enquanto grava arquivos');
 
-// A apresentação por Sistema deve ser local-first e não pode fundir Código PW repetido entre sistemas.
 assert.match(systemsUx,/documentRepository/,'Sistemas deve ler o catálogo local');
 assert.doesNotMatch(systemsUx,/listSystems|getClient/,'UI de Sistemas não deve depender da API remota na V1 local-first');
 assert.match(systemsUx,/const byId = new Map/,'apresentação deve resolver documento pelo ID antes de usar Código PW');
@@ -138,8 +138,6 @@ assert.match(css,/\.audit-table-wrap\{max-width:100%;overflow-x:auto/,'audit tab
 assert.match(css,/body\.has-modal-open\{overflow:hidden\}/,'modal deve bloquear scroll do conteúdo de fundo');
 assert.match(css,/\.btn:hover:not\(:disabled\),\.quick-card:hover,\.system-home-card:hover\{transform:none\}/,'touch não deve manter elevação visual de hover presa');
 
-// O browser smoke deixa de testar apenas bugs pontuais: ele varre a mesma classe de
-// problema em telas, perfis e larguras diferentes e mantém fixtures de estresse.
 assert.match(browserSmoke,/function assertVisualHealth/,'review local deve possuir varredura visual genérica');
 assert.match(browserSmoke,/overflowProblems/,'varredura deve procurar overflow em famílias de cards e painéis');
 assert.match(browserSmoke,/duplicateIds/,'varredura deve procurar inconsistências estruturais do DOM');
