@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const smoke=fileURLToPath(new URL('./browser-smoke.mjs',import.meta.url));
-const modalFocus=fileURLToPath(new URL('./browser-modal-focus.mjs',import.meta.url));
+const systemicRaces=fileURLToPath(new URL('./browser-systemic-races.mjs',import.meta.url));
 const retryable=/Chrome abriu, mas o endpoint de depuração não ficou disponível|Debugger do Chrome indisponível/;
 
 async function run(script,attempt,label){
@@ -28,4 +28,4 @@ async function runWithRetry(script,label){
 }
 
 await runWithRetry(smoke,'browser-smoke');
-await runWithRetry(modalFocus,'browser-modal-focus');
+await runWithRetry(systemicRaces,'browser-systemic-races');
