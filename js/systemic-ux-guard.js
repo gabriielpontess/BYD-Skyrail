@@ -3,11 +3,16 @@ const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 
 const modalState=new WeakMap();
 const FOCUSABLE='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+const CLOSE_SELECTOR='[data-close],[data-ux-close],[data-import-close],[data-packager-close],[data-pdf-close]';
 
 function isVisible(element){
   if(!element?.isConnected||element.classList.contains('hidden'))return false;
   const style=getComputedStyle(element);
   return style.display!=='none'&&style.visibility!=='hidden';
+}
+
+function modalBusy(backdrop){
+  return backdrop?.dataset.operationRunning==='1'||Boolean(backdrop?.querySelector('.is-loading,[aria-busy="true"]'));
 }
 
 function visibleModals(){
@@ -30,6 +35,24 @@ function focusables(backdrop){
   return $$(FOCUSABLE,backdrop).filter(element=>{
     if(!isVisible(element))return false;
     return !element.closest('[inert]');
+  });
+}
+
+function wrapAsyncForms(backdrop){
+  $$('form',backdrop).forEach(form=>{
+    if(form.dataset.systemicAsyncGuard==='1'||typeof form.onsubmit!=='function')return;
+    form.dataset.systemicAsyncGuard='1';
+    const original=form.onsubmit;
+    form.onsubmit=async function(event){
+      if(backdrop.dataset.operationRunning==='1'){
+        event?.preventDefault?.();
+        event?.stopImmediatePropagation?.();
+        return;
+      }
+      backdrop.dataset.operationRunning='1';
+      try{return await original.call(this,event)}
+      finally{backdrop.dataset.operationRunning='0'}
+    };
   });
 }
 
@@ -59,6 +82,7 @@ function onVisibilityChange(backdrop){
     const active=document.activeElement;
     state.opener=active instanceof HTMLElement&&!backdrop.contains(active)?active:null;
     accessibleDialog(backdrop);
+    wrapAsyncForms(backdrop);
     syncModalStack();
     requestAnimationFrame(()=>{
       if(!isVisible(backdrop)||visibleModals().at(-1)!==backdrop)return;
@@ -79,11 +103,10 @@ function onVisibilityChange(backdrop){
 function registerModal(backdrop){
   if(!(backdrop instanceof HTMLElement)||modalState.has(backdrop))return;
   const startsVisible=isVisible(backdrop);
-  // Começa como fechado para que onVisibilityChange execute também o caminho de
-  // abertura em modais que já chegam visíveis ao body (histórico/editor/viewer).
   const state={visible:false,opener:null,observer:null};
   modalState.set(backdrop,state);
   accessibleDialog(backdrop);
+  wrapAsyncForms(backdrop);
   backdrop.setAttribute('aria-hidden',String(!startsVisible));
   state.observer=new MutationObserver(()=>onVisibilityChange(backdrop));
   state.observer.observe(backdrop,{attributes:true,attributeFilter:['class','hidden']});
@@ -95,6 +118,14 @@ function scanModals(root=document){
   root.querySelectorAll?.('.modal-backdrop').forEach(registerModal);
   syncModalStack();
 }
+
+// Nenhuma saída do modal pode vencer uma operação assíncrona em andamento.
+document.addEventListener('click',event=>{
+  const close=event.target.closest?.(CLOSE_SELECTOR);if(!close)return;
+  const backdrop=close.closest('.modal-backdrop');if(!backdrop||!modalBusy(backdrop))return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+},true);
 
 // Tab nunca deve escapar para controles por trás da janela ativa.
 document.addEventListener('keydown',event=>{
@@ -112,8 +143,6 @@ document.addEventListener('keydown',event=>{
   if(!event.shiftKey&&(active===last||!top.contains(active))){event.preventDefault();first.focus({preventScroll:true})}
 },true);
 
-// Quando um modal é inserido/removido, a pilha, inert e restauração de foco são
-// recalculados sem observar toda a subárvore do aplicativo.
 if(document.body)new MutationObserver(records=>{
   for(const record of records){
     for(const node of record.addedNodes)if(node instanceof Element)scanModals(node);
