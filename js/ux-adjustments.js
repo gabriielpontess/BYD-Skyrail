@@ -15,6 +15,11 @@ function escapeHtml(value) {
     .replaceAll('"', '&quot;');
 }
 
+function currentRole() {
+  try { return String(JSON.parse(localStorage.getItem('byd-skyrail-member-cache') || 'null')?.role || '').toUpperCase(); }
+  catch { return ''; }
+}
+
 function documentDataFromRow(row) {
   const cells = [...row.cells];
   if (cells.length < 5) return null;
@@ -134,10 +139,11 @@ function enhanceDocumentRows() {
 }
 
 function isAdministratorScreen() {
-  return /administrador/i.test($('#header-user-role')?.textContent || '') || /administrador/i.test($('.access-role strong')?.textContent || '');
+  return currentRole() === 'ADMIN';
 }
 
 function openAddUserPreview() {
+  if (currentRole() !== 'ADMIN') return;
   document.querySelector('.ux-add-user-backdrop')?.remove();
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop ux-add-user-backdrop';
@@ -159,6 +165,10 @@ function openAddUserPreview() {
   $('[data-ux-close]', backdrop).onclick = close;
   $('[data-ux-user-form]', backdrop).onsubmit = async event => {
     event.preventDefault();
+    if (currentRole() !== 'ADMIN') {
+      $('.ux-add-user-note', backdrop).textContent = 'Ação disponível somente para administradores.';
+      return;
+    }
     const form = event.currentTarget;
     const note = $('.ux-add-user-note', backdrop);
     const button = form.querySelector('button[type="submit"]');
@@ -196,7 +206,10 @@ function openAddUserPreview() {
 }
 
 function enhanceAdminProfile() {
-  if (!isAdministratorScreen()) return;
+  if (!isAdministratorScreen()) {
+    $('.ux-admin-users-entry')?.remove();
+    return;
+  }
   const profileMain = $('.profile-main');
   if (!profileMain || $('.ux-admin-users-entry', profileMain)) return;
 
@@ -208,6 +221,7 @@ function enhanceAdminProfile() {
 }
 
 function enhanceAdminUsersTab() {
+  if (currentRole() !== 'ADMIN') return;
   const list = $('.user-list');
   if (!list) return;
   const panel = list.closest('.panel-card');
