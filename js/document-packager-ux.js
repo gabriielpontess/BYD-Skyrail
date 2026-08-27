@@ -2,6 +2,8 @@ import { documentPackagerService } from './documents/document-packager-service.j
 
 const $=(selector,root=document)=>root.querySelector(selector);
 const routeName=()=>{const raw=location.hash.replace(/^#\/?/,'');return raw.split('?')[0]||'home'};
+const member=()=>{try{return JSON.parse(localStorage.getItem('byd-skyrail-member-cache')||'null')}catch{return null}};
+const canPackage=()=>String(member()?.role||'').toUpperCase()==='ADMIN'&&routeName()==='audit';
 const formatBytes=value=>{const bytes=Number(value||0);if(!Number.isFinite(bytes)||bytes<=0)return'0 B';const units=['B','KB','MB','GB','TB'];let size=bytes,index=0;while(size>=1024&&index<units.length-1){size/=1024;index++}const digits=index>=3?2:index>=2?1:0;return`${size.toFixed(digits)} ${units[index]}`};
 const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const examples=(items,limit=6)=>items?.length?`${items.slice(0,limit).map(esc).join(', ')}${items.length>limit?'…':''}`:'—';
@@ -81,7 +83,7 @@ function packagerModal(){
   const pdfInput=modal.querySelector('[data-packager-pdfs]'),masterInput=modal.querySelector('[data-packager-master]'),status=modal.querySelector('[data-packager-status]'),report=modal.querySelector('[data-packager-report]'),validateButton=modal.querySelector('[data-packager-validate]'),generateButton=modal.querySelector('[data-packager-generate]'),cancelButton=modal.querySelector('[data-packager-cancel]');
   let analysis=null,validatedSignature='',controller=null,running=false;
   const signature=()=>`${pdfInput.files?.[0]?.name||''}:${pdfInput.files?.[0]?.size||0}:${pdfInput.files?.[0]?.lastModified||0}|${masterInput.files?.[0]?.name||''}:${masterInput.files?.[0]?.size||0}:${masterInput.files?.[0]?.lastModified||0}`;
-  const setRunning=value=>{running=value;pdfInput.disabled=value;masterInput.disabled=value;validateButton.disabled=value;generateButton.disabled=value||!analysis?.canGenerate;cancelButton.classList.toggle('hidden',!value)};
+  const setRunning=value=>{running=value;modal.dataset.operationRunning=value?'1':'0';pdfInput.disabled=value;masterInput.disabled=value;validateButton.disabled=value;generateButton.disabled=value||!analysis?.canGenerate;cancelButton.classList.toggle('hidden',!value)};
   const invalidate=()=>{if(running)return;analysis=null;validatedSignature='';generateButton.disabled=true;report.hidden=true;report.innerHTML='';status.classList.remove('error','success');status.textContent='Arquivos alterados. Clique em Validar para executar uma nova conferência.'};
 
   modal.querySelector('[data-packager-close]').onclick=()=>{if(!running)modal.classList.add('hidden')};
@@ -91,6 +93,7 @@ function packagerModal(){
 
   validateButton.onclick=async()=>{
     const pdfZipFile=pdfInput.files?.[0],masterFile=masterInput.files?.[0];
+    if(!canPackage()){status.textContent='A preparação de pacote está disponível somente para ADMIN na Auditoria.';status.classList.add('error');return}
     if(!pdfZipFile||!masterFile){status.textContent='Selecione o ZIP com PDFs e a lista mestra .xlsx.';status.classList.add('error');return}
     controller=new AbortController();cancelButton.disabled=false;setRunning(true);status.classList.remove('error','success');report.hidden=true;
     try{
@@ -104,6 +107,7 @@ function packagerModal(){
 
   generateButton.onclick=async()=>{
     const pdfZipFile=pdfInput.files?.[0];
+    if(!canPackage()){status.textContent='A geração de pacote está disponível somente para ADMIN na Auditoria.';status.classList.add('error');return}
     if(!analysis||validatedSignature!==signature()){invalidate();status.textContent='Os arquivos mudaram desde a última validação. Valide novamente antes de gerar.';status.classList.add('error');return}
     if(!documentPackagerService.supportsLargePackage()){status.textContent='Use Chrome ou Edge no computador para gerar pacotes grandes diretamente no disco.';status.classList.add('error');return}
     controller=new AbortController();cancelButton.disabled=false;setRunning(true);status.classList.remove('error','success');
@@ -115,11 +119,11 @@ function packagerModal(){
 }
 
 function addPackagerAction(){
-  if(routeName()!=='audit'||$('[data-document-packager]'))return;
+  if(!canPackage()||$('[data-document-packager]'))return;
   const page=$('#page');if(!page)return;
   const actions=$('.page-actions',page)||$('.audit-tabs',page)||$('.page-head',page);if(!actions)return;
   const button=document.createElement('button');button.className='btn btn-outline';button.type='button';button.dataset.documentPackager='';button.textContent='Preparar pacote';
-  button.onclick=()=>packagerModal().classList.remove('hidden');actions.append(button);
+  button.onclick=()=>{if(canPackage())packagerModal().classList.remove('hidden')};actions.append(button);
 }
 
 function enhance(){addPackagerAction()}
