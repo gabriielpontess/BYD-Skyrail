@@ -85,7 +85,11 @@ document.addEventListener('click',event=>{
 },true);
 
 const appRoot=document.querySelector('#app');
-if(appRoot)new MutationObserver(()=>queueMicrotask(enhanceRolePresentation)).observe(appRoot,{childList:true,subtree:true});
+// O shell pode nascer já com o cargo do usuário no cabeçalho. Corrigimos a role na
+// própria entrega da mutação para não expor um frame intermediário incorreto ao
+// CONTROLLER. setText é idempotente, então a mutação causada pela correção termina
+// no ciclo seguinte sem ping-pong.
+if(appRoot)new MutationObserver(()=>enhanceRolePresentation()).observe(appRoot,{childList:true,subtree:true});
 
 // O editor de usuário existente é anexado diretamente ao body pelo app.js.
 // Observamos somente filhos diretos do body: quando um modal é adicionado,
