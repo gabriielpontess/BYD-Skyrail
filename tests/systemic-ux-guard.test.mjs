@@ -24,6 +24,16 @@ assert.match(guard,/function modalRouteAllowed/,'modais assíncronos restritos d
 assert.match(guard,/#document-admin-form,#user-admin-form/,'editores administrativos atrasados devem ser reconhecidos');
 assert.match(guard,/\^Histórico\\s\*·/,'histórico administrativo atrasado deve ser reconhecido');
 assert.match(guard,/if\(!modalRouteAllowed\(backdrop\)\)\{backdrop\.remove/,'modal restrito atrasado deve ser rejeitado antes de ganhar foco');
+assert.match(guard,/function wrapPageForms/,'formulários assíncronos fora de modal devem receber single-flight');
+assert.match(guard,/systemicPageAsyncGuard/,'formulário de página deve ser envelopado apenas uma vez');
+assert.match(guard,/form\.dataset\.operationRunning==='1'/,'Enter/requestSubmit concorrente deve ser recusado');
+assert.match(guard,/form\.setAttribute\('aria-busy','true'\)/,'formulário em operação deve expor estado ocupado');
+assert.match(guard,/NON_MODAL_ASYNC_ACTIONS/,'ações assíncronas não modais devem ter família explícita');
+assert.match(guard,/data-home-action=\\?"sync/,'Sincronização rápida da Home deve passar pelo guard');
+assert.match(guard,/\[data-refresh\]/,'Atualizar Auditoria deve passar pelo guard');
+assert.match(guard,/function wrapPageAsyncActions/,'onclick assíncrono deve receber trava pelo tempo real da Promise');
+assert.match(guard,/button\.disabled=true/,'ação concorrente deve ser desabilitada durante execução');
+assert.match(guard,/await original\.call\(this,event\)/,'trava deve acompanhar a Promise original, sem timeout arbitrário');
 assert.match(guard,/app\.inert=Boolean\(top\)/,'modal aberto deve retirar o aplicativo de fundo da navegação por foco');
 assert.match(guard,/backdrop\.inert=!isTop/,'somente o modal superior pode receber interação');
 assert.match(guard,/event\.key!=='Tab'/,'guard deve conter navegação Tab');
