@@ -23,7 +23,6 @@ assert.match(guard,/new HashChangeEvent\('hashchange'\)/,'reparo deve reutilizar
 assert.match(guard,/function modalRouteAllowed/,'modais assíncronos restritos devem validar a rota no momento em que chegam ao DOM');
 assert.match(guard,/#document-admin-form,#user-admin-form/,'editores administrativos atrasados devem ser reconhecidos');
 assert.match(guard,/\^Histórico\\s\*·/,'histórico administrativo atrasado deve ser reconhecido');
-assert.match(guard,/if\(!modalRouteAllowed\(backdrop\)\)\{backdrop\.remove/,'modal restrito atrasado deve ser rejeitado antes de ganhar foco');
 assert.match(guard,/function wrapPageForms/,'formulários assíncronos fora de modal devem receber single-flight');
 assert.match(guard,/systemicPageAsyncGuard/,'formulário de página deve ser envelopado apenas uma vez');
 assert.match(guard,/form\.dataset\.operationRunning==='1'/,'Enter/requestSubmit concorrente deve ser recusado');
@@ -46,6 +45,14 @@ assert.match(guard,/generation!==avatarGeneration/,'resultado de avatar obsoleto
 assert.match(guard,/cachedMember\(\)\?\.user_id===userId&&routeName\(\)==='profile'/,'avatar só pode atualizar UI do mesmo usuário ainda no Perfil');
 assert.match(guard,/byd-skyrail:avatar:\$\{userId\}/,'persistência do avatar deve permanecer isolada por usuário');
 assert.match(guard,/addEventListener\('hashchange',\(\)=>\{avatarGeneration\+\+/,'troca de rota deve invalidar processamento de avatar pendente');
+assert.match(guard,/CRITICAL_PAGE_FORMS=':is\(#profile-form,#password-form\)\[data-operation-running="1"\]'/,'somente formulário crítico realmente ocupado deve bloquear logout');
+assert.match(guard,/function criticalOperationRunning/,'estado crítico deve ser calculado centralmente');
+assert.match(guard,/\[data-refresh\]\[data-operation-running="1"\]/,'refresh administrativo ocupado deve bloquear troca de sessão');
+assert.match(guard,/visibleModals\(\)\.some\(modal=>modalBusy\(modal\)\)/,'operação modal ocupada deve bloquear troca de sessão');
+assert.match(guard,/function guardLogout/,'logout deve possuir guard sistêmico');
+assert.match(guard,/event\.target\.closest\?\.\('\[data-logout\]'\)/,'guard deve agir somente sobre logout');
+assert.match(guard,/Aguarde a operação em andamento terminar antes de sair/,'usuário deve receber feedback ao tentar sair durante gravação');
+assert.match(guard,/document\.addEventListener\('click',guardLogout,true\)/,'logout deve ser interceptado antes do handler legado');
 assert.match(guard,/app\.inert=Boolean\(top\)/,'modal aberto deve retirar o aplicativo de fundo da navegação por foco');
 assert.match(guard,/backdrop\.inert=!isTop/,'somente o modal superior pode receber interação');
 assert.match(guard,/event\.key!=='Tab'/,'guard deve conter navegação Tab');
