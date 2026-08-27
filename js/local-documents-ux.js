@@ -5,6 +5,7 @@ import { packageImportService } from './documents/package-import-service.js';
 const $=(selector,root=document)=>root.querySelector(selector);
 const esc=value=>String(value??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
 const fold=value=>String(value??'').trim().normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ');
+const comparable=value=>fold(value).replace(/[^A-Z0-9]+/g,' ').trim();
 const routeInfo=()=>{const raw=location.hash.replace(/^#\/?/,'');const [name='',query='']=raw.split('?');return{name:name||'home',params:new URLSearchParams(query)}};
 const member=()=>{try{return JSON.parse(localStorage.getItem('byd-skyrail-member-cache')||'null')}catch{return null}};
 const role=()=>String(member()?.role||'USER').toUpperCase();
@@ -26,6 +27,11 @@ function syncLocalSessionState(){
   localState.sessionKey=next;
   resetLocalState();
   return true;
+}
+function supplementalDescription(doc){
+  const description=String(doc?.description??'').trim();
+  if(!description)return'';
+  return comparable(description)===comparable(doc?.title)?'':description;
 }
 
 function approvalBadgeClass(value){
@@ -56,31 +62,17 @@ function importModal(){
   document.body.append(modal);
   const closeButton=modal.querySelector('[data-import-close]'),fileInput=modal.querySelector('[data-import-file]'),startButton=modal.querySelector('[data-import-start]');
   let running=false;
-  const setRunning=value=>{
-    running=value;
-    modal.dataset.operationRunning=value?'1':'0';
-    closeButton.disabled=value;
-    fileInput.disabled=value;
-    startButton.disabled=value;
-    startButton.classList.toggle('is-loading',value);
-    startButton.setAttribute('aria-busy',String(value));
-  };
+  const setRunning=value=>{running=value;modal.dataset.operationRunning=value?'1':'0';closeButton.disabled=value;fileInput.disabled=value;startButton.disabled=value;startButton.classList.toggle('is-loading',value);startButton.setAttribute('aria-busy',String(value))};
   const close=()=>{if(!running)modal.classList.add('hidden')};
   closeButton.onclick=close;
   modal.addEventListener('click',event=>{if(event.target===modal)close()});
   startButton.onclick=async()=>{
-    const file=fileInput.files?.[0],status=modal.querySelector('[data-import-status]');
-    status.classList.remove('error','success');
+    const file=fileInput.files?.[0],status=modal.querySelector('[data-import-status]');status.classList.remove('error','success');
     if(!canImport()){status.textContent='Sua sessão não possui permissão para importar nesta área.';status.classList.add('error');return}
     if(!file){status.textContent='Selecione um arquivo .zip antes de iniciar.';status.classList.add('error');return}
     setRunning(true);startButton.textContent='Importando';
-    try{
-      const info=await packageImportService.import(file,progress=>{status.textContent=progress.phase==='extract'?`Validando ${progress.name||'arquivo'}…`:`Importando ${progress.done}/${progress.total}${progress.code?` · ${progress.code}`:''}`});
-      localStorage.setItem('byd-skyrail-last-sync',info.generatedAt||new Date().toISOString());
-      status.textContent=`Importação concluída: ${info.documentCount} documento(s), catálogo ${info.catalogVersion}.`;
-      status.classList.add('success');
-      setTimeout(()=>location.reload(),1000);
-    }catch(error){console.error('[BYD Skyrail] Importação local falhou:',error);status.textContent=error?.message||'Não foi possível importar o pacote. Verifique o arquivo e tente novamente.';status.classList.add('error')}
+    try{const info=await packageImportService.import(file,progress=>{status.textContent=progress.phase==='extract'?`Validando ${progress.name||'arquivo'}…`:`Importando ${progress.done}/${progress.total}${progress.code?` · ${progress.code}`:''}`});localStorage.setItem('byd-skyrail-last-sync',info.generatedAt||new Date().toISOString());status.textContent=`Importação concluída: ${info.documentCount} documento(s), catálogo ${info.catalogVersion}.`;status.classList.add('success');setTimeout(()=>location.reload(),1000)}
+    catch(error){console.error('[BYD Skyrail] Importação local falhou:',error);status.textContent=error?.message||'Não foi possível importar o pacote. Verifique o arquivo e tente novamente.';status.classList.add('error')}
     finally{setRunning(false);startButton.textContent='Validar e importar'}
   };
   return modal;
@@ -90,12 +82,11 @@ function addImportAction(){
   if(!canImport()||$('[data-local-import]'))return;
   const page=$('#page');if(!page)return;
   const actions=$('.page-actions',page)||$('.audit-tabs',page)||$('.page-head',page);if(!actions)return;
-  const button=document.createElement('button');button.className='btn btn-primary';button.type='button';button.dataset.localImport='';button.textContent='Importar atualização';
-  button.onclick=()=>{if(canImport())importModal().classList.remove('hidden')};actions.append(button);
+  const button=document.createElement('button');button.className='btn btn-primary';button.type='button';button.dataset.localImport='';button.textContent='Importar atualização';button.onclick=()=>{if(canImport())importModal().classList.remove('hidden')};actions.append(button);
 }
 
 function desktopRows(docs,systemMap){
-  return `<div class="doc-table-wrap" data-local-layout="desktop"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th></tr></thead><tbody>${docs.map(doc=>`<tr data-open-doc="${esc(doc.id)}" tabindex="0" role="button" aria-label="Abrir documento ${esc(doc.code)}"><td><span class="doc-code">${esc(doc.code)}</span></td><td><span class="doc-description">${esc(doc.title)}</span>${doc.description?`<small class="local-doc-description">${esc(doc.description)}</small>`:''}</td><td><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span></td><td>${esc(doc.discipline||'—')}</td><td>${esc(doc.document_type||'—')}</td><td>Rev. ${esc(doc.revision)}</td><td>${approvalBadge(doc.approval_status||doc.source_status)}</td></tr>`).join('')}</tbody></table></div>`;
+  return `<div class="doc-table-wrap" data-local-layout="desktop"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Sistema</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th></tr></thead><tbody>${docs.map(doc=>{const extra=supplementalDescription(doc);return`<tr data-open-doc="${esc(doc.id)}" tabindex="0" role="button" aria-label="Abrir documento ${esc(doc.code)}"><td><span class="doc-code">${esc(doc.code)}</span></td><td><span class="doc-description">${esc(doc.title)}</span>${extra?`<small class="local-doc-description">${esc(extra)}</small>`:''}</td><td><span class="system-tag">${esc(systemMap.get(doc.system_id)||doc.system_name||'Sem sistema')}</span></td><td>${esc(doc.discipline||'—')}</td><td>${esc(doc.document_type||'—')}</td><td>Rev. ${esc(doc.revision)}</td><td>${approvalBadge(doc.approval_status||doc.source_status)}</td></tr>`}).join('')}</tbody></table></div>`;
 }
 
 function mobileRows(docs,systemMap){
@@ -112,26 +103,21 @@ async function renderLocalDocumentsPage(){
     const all=await documentRepository.getAll({includeInactive:true});
     const systems=await documentRepository.getSystems({includeInactive:true});
     const systemMap=new Map(systems.map(system=>[system.id,system.name]));
-    const params=routeInfo().params;
-    const requestedSystem=params.get('system');
+    const params=routeInfo().params;const requestedSystem=params.get('system');
     const selectedSystem=requestedSystem&&systems.some(system=>system.id===requestedSystem&&system.active!==false)?requestedSystem:'ALL';
     const visible=await documentRepository.search(localState.query,{systemId:selectedSystem,discipline:localState.discipline,documentType:localState.documentType,approvalStatus:localState.approvalStatus});
     const disciplines=[...new Set(all.map(doc=>doc.discipline).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
     const types=[...new Set(all.map(doc=>doc.document_type).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
     const approvalStatuses=[...new Set(all.map(doc=>doc.approval_status||doc.source_status).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
     const systemOptions=systems.filter(system=>system.active!==false).map(system=>`<option value="${esc(system.id)}" ${system.id===selectedSystem?'selected':''}>${esc(system.name)}</option>`).join('');
-    const totalPages=Math.max(1,Math.ceil(visible.length/PAGE_SIZE));
-    localState.page=Math.min(totalPages,Math.max(1,localState.page));
-    const start=(localState.page-1)*PAGE_SIZE;
-    const pageDocs=visible.slice(start,start+PAGE_SIZE);
-    const end=start+pageDocs.length;
-    const isMobile=documentsMedia.matches;
+    const totalPages=Math.max(1,Math.ceil(visible.length/PAGE_SIZE));localState.page=Math.min(totalPages,Math.max(1,localState.page));
+    const start=(localState.page-1)*PAGE_SIZE;const pageDocs=visible.slice(start,start+PAGE_SIZE);const end=start+pageDocs.length;const isMobile=documentsMedia.matches;
     const resultMarkup=visible.length?(isMobile?mobileRows(pageDocs,systemMap):desktopRows(pageDocs,systemMap)):`<div class="empty-state"><h3>Nenhum documento encontrado</h3><p>Revise o texto pesquisado ou remova um dos filtros para ampliar os resultados.</p></div>`;
     const pagination=visible.length&&totalPages>1?`<div class="pagination local-pagination" aria-label="Paginação de documentos"><button data-local-page-prev type="button" ${localState.page<=1?'disabled':''}>Anterior</button><span>Página <strong>${localState.page}</strong> de <strong>${totalPages}</strong></span><button data-local-page-next type="button" ${localState.page>=totalPages?'disabled':''}>Próxima</button></div>`:'';
     page.dataset.localDocumentsOwner='local-first';
     page.innerHTML=`<div class="page-head"><div><h1>Documentos</h1><p>Pesquise e filtre o catálogo armazenado localmente, inclusive sem internet.</p></div></div>
       <section class="search-panel local-document-search-panel">
-        <form id="local-document-search" class="search-row"><div class="input-with-icon"><input class="input-control" name="query" value="${esc(localState.query)}" placeholder="Buscar por código, título ou descrição…" aria-label="Buscar documentos"></div><button class="btn btn-primary" type="submit">Pesquisar</button></form>
+        <form id="local-document-search" class="search-row"><div class="input-with-icon"><input class="input-control" name="query" value="${esc(localState.query)}" placeholder="Buscar por código, título ou descrição…" aria-label="Buscar documentos"></div><button class="btn btn-outline local-search-clear" data-local-search-clear type="button">Limpar</button><button class="btn btn-primary" type="submit">Pesquisar</button></form>
         <p class="search-hint">Funciona offline · pressione Enter para pesquisar</p>
         <div class="local-filter-grid">
           <label class="canonical-system-filter"><span>Sistema</span><select data-local-system><option value="ALL">Todos os sistemas</option>${systemOptions}</select></label>
@@ -145,6 +131,7 @@ async function renderLocalDocumentsPage(){
     const rerender=()=>{page.dataset.localDocumentsRendering='0';renderLocalDocumentsPage()};
     const resetAndRerender=()=>{localState.page=1;rerender()};
     $('#local-document-search',page).onsubmit=event=>{event.preventDefault();localState.query=new FormData(event.currentTarget).get('query')?.toString().trim()||'';resetAndRerender()};
+    $('[data-local-search-clear]',page).onclick=()=>{localState.query='';localState.page=1;rerender()};
     $('[data-local-system]',page).onchange=event=>{localState.page=1;const id=event.target.value;location.hash=id==='ALL'?'#/documents':`#/documents?system=${encodeURIComponent(id)}`};
     $('[data-local-discipline]',page).onchange=event=>{localState.discipline=event.target.value;resetAndRerender()};
     $('[data-local-type]',page).onchange=event=>{localState.documentType=event.target.value;resetAndRerender()};
@@ -162,15 +149,5 @@ addEventListener('hashchange',()=>{syncLocalSessionState();localState.page=1;con
 addEventListener('load',enhance);enhance();
 documentsMedia.addEventListener?.('change',()=>{if(routeInfo().name!=='documents')return;localState.page=1;const page=$('#page');if(page)delete page.dataset.localDocumentsRendering;renderLocalDocumentsPage()});
 
-document.addEventListener('click',async event=>{
-  const trigger=event.target.closest?.('[data-open-doc]');if(!trigger)return;
-  if(event.target.closest?.('a,input,select,textarea'))return;
-  event.preventDefault();event.stopImmediatePropagation();
-  try{await documentViewerService.open(trigger.dataset.openDoc)}catch(error){console.error('[BYD Skyrail] Falha ao abrir PDF local:',error);alert(error?.message||'Não foi possível abrir o PDF.')}
-},true);
-document.addEventListener('keydown',async event=>{
-  if(!['Enter',' '].includes(event.key))return;
-  const trigger=event.target.closest?.('[data-open-doc]');if(!trigger||event.target!==trigger)return;
-  event.preventDefault();
-  try{await documentViewerService.open(trigger.dataset.openDoc)}catch(error){console.error('[BYD Skyrail] Falha ao abrir PDF local:',error);alert(error?.message||'Não foi possível abrir o PDF.')}
-});
+document.addEventListener('click',async event=>{const trigger=event.target.closest?.('[data-open-doc]');if(!trigger)return;if(event.target.closest?.('a,input,select,textarea'))return;event.preventDefault();event.stopImmediatePropagation();try{await documentViewerService.open(trigger.dataset.openDoc)}catch(error){console.error('[BYD Skyrail] Falha ao abrir PDF local:',error);alert(error?.message||'Não foi possível abrir o PDF.')}},true);
+document.addEventListener('keydown',async event=>{if(!['Enter',' '].includes(event.key))return;const trigger=event.target.closest?.('[data-open-doc]');if(!trigger||event.target!==trigger)return;event.preventDefault();try{await documentViewerService.open(trigger.dataset.openDoc)}catch(error){console.error('[BYD Skyrail] Falha ao abrir PDF local:',error);alert(error?.message||'Não foi possível abrir o PDF.')}});
