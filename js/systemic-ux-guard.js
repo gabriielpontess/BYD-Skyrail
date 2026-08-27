@@ -6,7 +6,7 @@ const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 const modalState=new WeakMap();
 const FOCUSABLE='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 const CLOSE_SELECTOR='[data-close],[data-ux-close],[data-import-close],[data-packager-close],[data-pdf-close]';
-const NON_MODAL_ASYNC_ACTIONS='[data-home-action="sync"],[data-refresh]';
+const NON_MODAL_ASYNC_ACTIONS='[data-home-action="sync"],[data-sync],[data-refresh]';
 let routeRepairScheduled=false,avatarGeneration=0,avatarToastTimer=null;
 
 const originalViewerOpen=documentViewerService.open.bind(documentViewerService);
