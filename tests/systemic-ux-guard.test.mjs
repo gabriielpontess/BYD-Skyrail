@@ -14,6 +14,14 @@ assert.match(guard,/let viewerOpening=false/,'abertura de PDF deve ter trava enq
 assert.match(guard,/viewerOpening\|\|active/,'nova abertura deve ser recusada enquanto carrega ou existe viewer ativo');
 assert.match(guard,/\.local-pdf-backdrop/,'trava deve permanecer enquanto o PDF estiver visualmente aberto');
 assert.match(guard,/finally\{viewerOpening=false\}/,'falha ou conclusão do carregamento deve liberar a trava pendente');
+assert.match(guard,/function repairStaleRouteSurface/,'resposta assíncrona atrasada deve possuir reparo de rota');
+assert.match(guard,/staleAudit/,'Auditoria não pode sobrescrever uma rota atual após await antigo');
+assert.match(guard,/staleController/,'Controller não pode permanecer renderizado depois de troca de rota');
+assert.match(guard,/new HashChangeEvent\('hashchange'\)/,'reparo deve reutilizar o caminho canônico de renderização');
+assert.match(guard,/function modalRouteAllowed/,'modais assíncronos restritos devem validar a rota no momento em que chegam ao DOM');
+assert.match(guard,/#document-admin-form,#user-admin-form/,'editores administrativos atrasados devem ser reconhecidos');
+assert.match(guard,/\^Histórico\\s\*·/,'histórico administrativo atrasado deve ser reconhecido');
+assert.match(guard,/if\(!modalRouteAllowed\(backdrop\)\)\{backdrop\.remove/,'modal restrito atrasado deve ser rejeitado antes de ganhar foco');
 assert.match(guard,/app\.inert=Boolean\(top\)/,'modal aberto deve retirar o aplicativo de fundo da navegação por foco');
 assert.match(guard,/backdrop\.inert=!isTop/,'somente o modal superior pode receber interação');
 assert.match(guard,/event\.key!=='Tab'/,'guard deve conter navegação Tab');
