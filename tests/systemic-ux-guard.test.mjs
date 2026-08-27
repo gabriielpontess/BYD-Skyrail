@@ -8,6 +8,12 @@ const [guard,index]=await Promise.all([
 
 assert.match(index,/systemic-ux-guard\.js/,'bootstrap deve carregar a proteção sistêmica por último');
 assert.ok(index.indexOf('ui-refinement.js')<index.indexOf('systemic-ux-guard.js'),'guard sistêmico deve executar após refinamentos legados');
+assert.match(guard,/documentViewerService/,'guard sistêmico deve proteger também a abertura do viewer');
+assert.match(guard,/const originalViewerOpen=/,'viewer deve preservar a operação original sob single-flight');
+assert.match(guard,/let viewerOpening=false/,'abertura de PDF deve ter trava enquanto o carregamento está pendente');
+assert.match(guard,/viewerOpening\|\|active/,'nova abertura deve ser recusada enquanto carrega ou existe viewer ativo');
+assert.match(guard,/\.local-pdf-backdrop/,'trava deve permanecer enquanto o PDF estiver visualmente aberto');
+assert.match(guard,/finally\{viewerOpening=false\}/,'falha ou conclusão do carregamento deve liberar a trava pendente');
 assert.match(guard,/app\.inert=Boolean\(top\)/,'modal aberto deve retirar o aplicativo de fundo da navegação por foco');
 assert.match(guard,/backdrop\.inert=!isTop/,'somente o modal superior pode receber interação');
 assert.match(guard,/event\.key!=='Tab'/,'guard deve conter navegação Tab');
