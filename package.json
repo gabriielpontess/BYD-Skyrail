@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "node tests/standalone.test.mjs && node tests/local-documents.test.mjs && node tests/document-packager.test.mjs && node tests/document-packager-unicode-path.test.mjs && node tests/notifications.test.mjs && node tests/ui-contracts.test.mjs && node tests/observer-ownership.test.mjs && node tests/user-creation.test.mjs && node tests/invite-onboarding.test.mjs && node tests/service-worker-update.test.mjs",
+    "test": "node tests/standalone.test.mjs && node tests/local-documents.test.mjs && node tests/document-packager.test.mjs && node tests/document-packager-unicode-path.test.mjs && node tests/notifications.test.mjs && node tests/ui-contracts.test.mjs && node tests/observer-ownership.test.mjs && node tests/systemic-ux-guard.test.mjs && node tests/user-creation.test.mjs && node tests/invite-onboarding.test.mjs && node tests/service-worker-update.test.mjs",
     "test:browser": "node tests/browser-smoke-runner.mjs",
     "review:local": "npm test && npm run build && npm run test:browser",
     "android:add": "cap add android",
