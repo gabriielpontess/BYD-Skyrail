@@ -78,17 +78,16 @@ function onVisibilityChange(backdrop){
 
 function registerModal(backdrop){
   if(!(backdrop instanceof HTMLElement)||modalState.has(backdrop))return;
-  const state={visible:isVisible(backdrop),opener:null,observer:null};
+  const startsVisible=isVisible(backdrop);
+  // Começa como fechado para que onVisibilityChange execute também o caminho de
+  // abertura em modais que já chegam visíveis ao body (histórico/editor/viewer).
+  const state={visible:false,opener:null,observer:null};
   modalState.set(backdrop,state);
   accessibleDialog(backdrop);
-  backdrop.setAttribute('aria-hidden',String(!state.visible));
+  backdrop.setAttribute('aria-hidden',String(!startsVisible));
   state.observer=new MutationObserver(()=>onVisibilityChange(backdrop));
   state.observer.observe(backdrop,{attributes:true,attributeFilter:['class','hidden']});
-  if(state.visible){
-    const active=document.activeElement;
-    state.opener=active instanceof HTMLElement&&!backdrop.contains(active)?active:null;
-    requestAnimationFrame(()=>onVisibilityChange(backdrop));
-  }
+  if(startsVisible)onVisibilityChange(backdrop);else syncModalStack();
 }
 
 function scanModals(root=document){
@@ -120,7 +119,8 @@ if(document.body)new MutationObserver(records=>{
     for(const node of record.addedNodes)if(node instanceof Element)scanModals(node);
     for(const node of record.removedNodes){
       if(!(node instanceof Element))continue;
-      const removed=[node,...node.querySelectorAll?.('.modal-backdrop')||[]].filter(item=>item.matches?.('.modal-backdrop'));
+      const nested=node.querySelectorAll?.('.modal-backdrop')||[];
+      const removed=[node,...nested].filter(item=>item.matches?.('.modal-backdrop'));
       removed.forEach(backdrop=>{
         const state=modalState.get(backdrop);if(!state)return;
         state.observer?.disconnect();
