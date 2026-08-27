@@ -6,6 +6,7 @@ const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 const modalState=new WeakMap();
 const FOCUSABLE='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 const CLOSE_SELECTOR='[data-close],[data-ux-close],[data-import-close],[data-packager-close],[data-pdf-close]';
+const NON_MODAL_ASYNC_ACTIONS='[data-home-action="sync"],[data-refresh]';
 let routeRepairScheduled=false;
 
 const originalViewerOpen=documentViewerService.open.bind(documentViewerService);
@@ -95,6 +96,42 @@ function wrapAsyncForms(backdrop){
     };
   });
 }
+
+// Formulários assíncronos fora de modal (login/perfil/senha) também precisam de
+// single-flight. Desabilitar apenas o botão não bloqueia Enter/requestSubmit().
+function wrapPageForms(root=document){
+  $$('form',root).forEach(form=>{
+    if(form.closest('.modal-backdrop')||form.dataset.systemicPageAsyncGuard==='1'||typeof form.onsubmit!=='function')return;
+    form.dataset.systemicPageAsyncGuard='1';
+    const original=form.onsubmit;
+    form.onsubmit=async function(event){
+      if(form.dataset.operationRunning==='1'){
+        event?.preventDefault?.();event?.stopImmediatePropagation?.();return false;
+      }
+      form.dataset.operationRunning='1';form.setAttribute('aria-busy','true');
+      try{return await original.call(this,event)}
+      finally{form.dataset.operationRunning='0';form.setAttribute('aria-busy','false')}
+    };
+  });
+}
+
+// Ações onclick assíncronas que não vivem em formulário recebem a mesma trava.
+// O wrapper espera a Promise real, então não depende de timeout arbitrário.
+function wrapPageAsyncActions(root=document){
+  $$(NON_MODAL_ASYNC_ACTIONS,root).forEach(button=>{
+    if(button.dataset.systemicAsyncClickGuard==='1'||typeof button.onclick!=='function')return;
+    button.dataset.systemicAsyncClickGuard='1';
+    const original=button.onclick;
+    button.onclick=async function(event){
+      if(button.dataset.operationRunning==='1'){event?.preventDefault?.();event?.stopImmediatePropagation?.();return false}
+      button.dataset.operationRunning='1';button.setAttribute('aria-busy','true');button.disabled=true;
+      try{return await original.call(this,event)}
+      finally{if(button.isConnected){button.dataset.operationRunning='0';button.setAttribute('aria-busy','false');button.disabled=false}}
+    };
+  });
+}
+function scanPageAsync(root=document){wrapPageForms(root);wrapPageAsyncActions(root)}
+
 function syncModalStack(){
   const open=visibleModals(),top=open.at(-1)||null,app=$('#app');
   if(app)app.inert=Boolean(top);
@@ -132,14 +169,14 @@ document.addEventListener('keydown',event=>{
 
 if(document.body)new MutationObserver(records=>{
   for(const record of records){
-    for(const node of record.addedNodes)if(node instanceof Element)scanModals(node);
+    for(const node of record.addedNodes)if(node instanceof Element){scanModals(node);scanPageAsync(node)}
     for(const node of record.removedNodes){if(!(node instanceof Element))continue;const nested=node.querySelectorAll?.('.modal-backdrop')||[];const removed=[node,...nested].filter(item=>item.matches?.('.modal-backdrop'));removed.forEach(backdrop=>{const state=modalState.get(backdrop);if(!state)return;state.observer?.disconnect();if(state.visible){const opener=state.opener;state.visible=false;state.opener=null;if(opener?.isConnected)requestAnimationFrame(()=>opener.focus({preventScroll:true}))}modalState.delete(backdrop)})}
   }
   syncModalStack();
 }).observe(document.body,{childList:true,subtree:false});
 
 const appRoot=$('#app');
-if(appRoot)new MutationObserver(()=>queueMicrotask(sanitizeRestrictedUi)).observe(appRoot,{childList:true,subtree:true});
-addEventListener('hashchange',()=>{queueMicrotask(()=>scanModals());queueMicrotask(sanitizeRestrictedUi)});
-addEventListener('load',()=>{scanModals();sanitizeRestrictedUi()});
-scanModals();sanitizeRestrictedUi();
+if(appRoot)new MutationObserver(()=>queueMicrotask(()=>{sanitizeRestrictedUi();scanPageAsync(appRoot)})).observe(appRoot,{childList:true,subtree:true});
+addEventListener('hashchange',()=>{queueMicrotask(()=>scanModals());queueMicrotask(()=>{sanitizeRestrictedUi();scanPageAsync(appRoot||document)})});
+addEventListener('load',()=>{scanModals();sanitizeRestrictedUi();scanPageAsync()});
+scanModals();sanitizeRestrictedUi();scanPageAsync();
