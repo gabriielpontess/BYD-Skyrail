@@ -77,8 +77,6 @@ async function main(){
   await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`try{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get(){return false}})}catch{}`});
   async function restrictedRoute(role,route,cargo){
     await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember(role,cargo)))})`);
-    // Query string muda a URL de documento e força um boot completo; mudar só o hash
-    // manteria a tela de Login anterior e não exercitaria o bootstrap offline.
     await cdp.send('Page.navigate',{url:`${BASE}?role=${encodeURIComponent(role)}&route=${encodeURIComponent(route)}#/${route}`});
     await waitFor(`document.querySelector('.hero')&&location.hash==='#/home'`);
     const state=await evaluate(`({hash:location.hash,packager:!!document.querySelector('[data-document-packager]'),importAction:!!document.querySelector('[data-local-import]'),auditNav:!!document.querySelector('.desktop-nav [data-nav="audit"]'),controllerNav:!!document.querySelector('[data-controller-updates]')})`);
@@ -98,15 +96,29 @@ async function main(){
   assert.equal(user.controllerNav,false,'USER não pode receber Atualizações');
   await restrictedRoute('USER','rota-inexistente');
 
-  // Cargo textual não concede privilégio: USER chamado/cadastrado como Administrador
-  // continua sem controles administrativos no Perfil.
   await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(cachedMember('USER','Administrador de documentação')))})`);
   await cdp.send('Page.navigate',{url:`${BASE}?role=user-cargo-admin#/profile`});
   await waitFor(`location.hash==='#/profile'&&document.querySelector('.profile-layout')`);await sleep(120);
   assert.equal(await evaluate(`Boolean(document.querySelector('[data-ux-add-user],.ux-admin-users-entry'))`),false,'cargo com palavra Administrador não pode conceder UI ADMIN a USER');
 
+  // Resposta de rota antiga simulada: se Auditoria escrever depois que Perfil já é a
+  // rota atual, o guard força o renderer canônico e a superfície velha desaparece.
+  await evaluate(`(()=>{const stale=document.createElement('div');stale.id='admin-content';stale.textContent='AUDITORIA ATRASADA';document.querySelector('#page').append(stale);return true})()`);
+  await waitFor(`location.hash==='#/profile'&&!document.querySelector('#admin-content')&&document.querySelector('.profile-layout')`);
+
+  // Modal administrativo que chega após await antigo também é rejeitado antes de foco.
+  await evaluate(`(()=>{const b=document.createElement('div');b.id='stale-admin-modal';b.className='modal-backdrop';b.innerHTML='<section class="modal"><header class="modal-head"><div class="modal-head-copy"><strong>Editar usuário</strong></div></header><form id="user-admin-form"><button type="submit">Salvar</button></form></section>';document.body.append(b);return true})()`);
+  await waitFor(`!document.querySelector('#stale-admin-modal')`);
+  assert.equal(await evaluate(`document.body.classList.contains('has-modal-open')`),false,'modal administrativo atrasado não pode bloquear a rota atual');
+
+  // Com um viewer já ativo, dois novos disparos não podem criar segunda instância.
+  await evaluate(`location.hash='#/documents'`);await waitFor(`document.querySelector('[data-open-doc]')`);
+  await evaluate(`(()=>{const b=document.createElement('div');b.id='viewer-single-flight-fixture';b.className='modal-backdrop local-pdf-backdrop';b.innerHTML='<section class="modal local-pdf-viewer"><div data-pdf-stage tabindex="0"></div></section>';document.body.append(b);const trigger=document.querySelector('[data-open-doc]');trigger.click();trigger.click();return true})()`);await sleep(120);
+  assert.equal(await evaluate(`document.querySelectorAll('.local-pdf-backdrop').length`),1,'duplo disparo não pode empilhar viewers de PDF');
+  await evaluate(`document.querySelector('#viewer-single-flight-fixture')?.remove()`);await waitFor(`!document.body.classList.contains('has-modal-open')`);
+
   assert.deepEqual(await evaluate(`globalThis.__BYD_BOOT_DIAG?.errors||[]`),[],'nenhum erro de bootstrap deve surgir');
-  cdp.close();console.log('browser-modal-focus.mjs: ok — foco, pilha modal, operação assíncrona, viewport baixo e rotas/permissões por perfil validados em Chrome real');
+  cdp.close();console.log('browser-modal-focus.mjs: ok — foco, pilha modal, reentrância, stale async UI, viewport baixo e rotas/permissões validados em Chrome real');
 }
 
 let failure=null;try{await main()}catch(error){failure=error}finally{await stop(chrome);await stop(preview);if(profileDir)await rm(profileDir,{recursive:true,force:true}).catch(()=>{})}if(failure)throw failure;
