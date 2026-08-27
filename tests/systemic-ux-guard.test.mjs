@@ -30,10 +30,18 @@ assert.match(guard,/form\.dataset\.operationRunning==='1'/,'Enter/requestSubmit 
 assert.match(guard,/form\.setAttribute\('aria-busy','true'\)/,'formulário em operação deve expor estado ocupado');
 assert.match(guard,/NON_MODAL_ASYNC_ACTIONS/,'ações assíncronas não modais devem ter família explícita');
 assert.match(guard,/data-home-action=\\?"sync/,'Sincronização rápida da Home deve passar pelo guard');
+assert.match(guard,/\[data-sync\]/,'todo botão convencional de sincronização deve passar pelo guard');
 assert.match(guard,/\[data-refresh\]/,'Atualizar Auditoria deve passar pelo guard');
 assert.match(guard,/function wrapPageAsyncActions/,'onclick assíncrono deve receber trava pelo tempo real da Promise');
 assert.match(guard,/button\.disabled=true/,'ação concorrente deve ser desabilitada durante execução');
 assert.match(guard,/await original\.call\(this,event\)/,'trava deve acompanhar a Promise original, sem timeout arbitrário');
+assert.match(guard,/function guardAvatarInput/,'avatar deve usar tratamento sistêmico contra conclusão obsoleta');
+assert.match(guard,/systemicAvatarGuard/,'input de avatar deve ser assumido uma única vez pelo guard');
+assert.match(guard,/const generation=\+\+avatarGeneration/,'cada processamento de avatar deve possuir geração própria');
+assert.match(guard,/generation!==avatarGeneration/,'resultado de avatar obsoleto deve ser descartado');
+assert.match(guard,/cachedMember\(\)\?\.user_id===userId&&routeName\(\)==='profile'/,'avatar só pode atualizar UI do mesmo usuário ainda no Perfil');
+assert.match(guard,/byd-skyrail:avatar:\$\{userId\}/,'persistência do avatar deve permanecer isolada por usuário');
+assert.match(guard,/addEventListener\('hashchange',\(\)=>\{avatarGeneration\+\+/,'troca de rota deve invalidar processamento de avatar pendente');
 assert.match(guard,/app\.inert=Boolean\(top\)/,'modal aberto deve retirar o aplicativo de fundo da navegação por foco');
 assert.match(guard,/backdrop\.inert=!isTop/,'somente o modal superior pode receber interação');
 assert.match(guard,/event\.key!=='Tab'/,'guard deve conter navegação Tab');
