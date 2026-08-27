@@ -6,6 +6,7 @@ const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
 const modalState=new WeakMap();
 const FOCUSABLE='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 const CLOSE_SELECTOR='[data-close],[data-ux-close],[data-import-close],[data-packager-close],[data-pdf-close]';
+let routeRepairScheduled=false;
 
 // Single-flight do viewer: cliques/Enter/notificações concorrentes compartilham a
 // mesma trava. Enquanto um PDF carrega ou permanece aberto, nenhuma segunda
@@ -32,6 +33,22 @@ function routeAllowed(role,route){
   if(route==='controller-updates')return role==='CONTROLLER';
   return false;
 }
+
+function repairStaleRouteSurface(){
+  const page=$('#page');if(!page||routeRepairScheduled)return;
+  const route=routeName();
+  const staleAudit=route!=='audit'&&Boolean(page.querySelector('.admin-tabs,#admin-content'));
+  const staleController=route!=='controller-updates'&&Boolean(page.querySelector('.controller-update-card'));
+  if(!staleAudit&&!staleController)return;
+  routeRepairScheduled=true;
+  queueMicrotask(()=>{
+    routeRepairScheduled=false;
+    // O app usa hashchange como caminho canônico de render. Reemitir o evento
+    // descarta qualquer resposta assíncrona antiga que tenha escrito na rota atual.
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  });
+}
+
 function sanitizeRestrictedUi(){
   const member=cachedMember();
   if(!member||!$('#page'))return;
@@ -41,7 +58,8 @@ function sanitizeRestrictedUi(){
     const allowed=(role==='ADMIN'&&route==='audit')||(role==='CONTROLLER'&&route==='controller-updates');
     if(!allowed)button.remove();
   });
-  if(!routeAllowed(role,route)&&location.hash!=='#/home')location.hash='#/home';
+  if(!routeAllowed(role,route)&&location.hash!=='#/home'){location.hash='#/home';return}
+  repairStaleRouteSurface();
 }
 
 function isVisible(element){
@@ -68,6 +86,17 @@ function accessibleDialog(backdrop){
     dialog.setAttribute('aria-label',heading||'Janela do BYD Skyrail');
   }
   return dialog;
+}
+
+function modalRouteAllowed(backdrop){
+  const route=routeName(),role=currentRole();
+  // Editores/histórico administrativo podem terminar um await depois que o usuário
+  // já saiu da Auditoria. Nesse caso a janela atrasada é rejeitada antes de focar.
+  const adminForm=backdrop.querySelector('#document-admin-form,#user-admin-form');
+  const heading=$('.modal-head-copy strong',backdrop)?.textContent?.trim()||'';
+  const adminHistory=/^Histórico\s*·/i.test(heading);
+  if(adminForm||adminHistory)return role==='ADMIN'&&route==='audit';
+  return true;
 }
 
 function focusables(backdrop){
@@ -141,6 +170,7 @@ function onVisibilityChange(backdrop){
 
 function registerModal(backdrop){
   if(!(backdrop instanceof HTMLElement)||modalState.has(backdrop))return;
+  if(!modalRouteAllowed(backdrop)){backdrop.remove();syncModalStack();return}
   const startsVisible=isVisible(backdrop);
   const state={visible:false,opener:null,observer:null};
   modalState.set(backdrop,state);
