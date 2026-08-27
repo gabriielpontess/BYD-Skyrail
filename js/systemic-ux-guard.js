@@ -1,4 +1,5 @@
 import { documentViewerService } from './documents/viewer-service.js';
+import { syncAll } from './sync.js';
 
 const $=(selector,root=document)=>root.querySelector(selector);
 const $$=(selector,root=document)=>[...root.querySelectorAll(selector)];
@@ -113,6 +114,19 @@ function wrapPageForms(root=document){
   });
 }
 
+function avatarToast(message,error=false){
+  const toast=$('#toast');if(!toast)return;
+  clearTimeout(avatarToastTimer);toast.textContent=message;toast.classList.toggle('error',error);toast.classList.add('show');
+  avatarToastTimer=setTimeout(()=>toast.classList.remove('show'),3600);
+}
+async function runOfflineLocalSync(){
+  try{
+    const result=await syncAll();
+    avatarToast(`Catálogo local verificado: ${result.total.toLocaleString('pt-BR')} documento(s).`);
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    return result;
+  }catch(error){avatarToast(error?.message||'Não foi possível verificar o catálogo local.',true);return false}
+}
 function wrapPageAsyncActions(root=document){
   $$(NON_MODAL_ASYNC_ACTIONS,root).forEach(button=>{
     if(button.dataset.systemicAsyncClickGuard==='1'||typeof button.onclick!=='function')return;
@@ -121,17 +135,15 @@ function wrapPageAsyncActions(root=document){
     button.onclick=async function(event){
       if(button.dataset.operationRunning==='1'){event?.preventDefault?.();event?.stopImmediatePropagation?.();return false}
       button.dataset.operationRunning='1';button.setAttribute('aria-busy','true');button.disabled=true;
-      try{return await original.call(this,event)}
-      finally{if(button.isConnected){button.dataset.operationRunning='0';button.setAttribute('aria-busy','false');button.disabled=false}}
+      try{
+        const isLocalSync=button.matches('[data-sync],[data-home-action="sync"]');
+        if(isLocalSync&&!navigator.onLine)return await runOfflineLocalSync();
+        return await original.call(this,event);
+      }finally{if(button.isConnected){button.dataset.operationRunning='0';button.setAttribute('aria-busy','false');button.disabled=false}}
     };
   });
 }
 
-function avatarToast(message,error=false){
-  const toast=$('#toast');if(!toast)return;
-  clearTimeout(avatarToastTimer);toast.textContent=message;toast.classList.toggle('error',error);toast.classList.add('show');
-  avatarToastTimer=setTimeout(()=>toast.classList.remove('show'),3600);
-}
 function resizeAvatarSafe(file){
   return new Promise((resolve,reject)=>{
     const reader=new FileReader();reader.onerror=reject;
