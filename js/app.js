@@ -260,7 +260,10 @@ function updateConnectivity() {
 
 function updateNav() {
   document.querySelectorAll('[data-nav]').forEach(button => {
-    button.classList.toggle('active', button.dataset.nav === state.view);
+    const active = button.dataset.nav === state.view;
+    button.classList.toggle('active', active);
+    if (active) button.setAttribute('aria-current', 'page');
+    else button.removeAttribute('aria-current');
   });
 }
 
@@ -382,378 +385,73 @@ async function renderHome(page) {
   });
 }
 
-function sortedDocuments(docs) {
-  const list = [...docs];
-  if (state.sort === 'title') return list.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR', { sensitivity: 'base' }));
-  if (state.sort === 'updated') return list.sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)));
-  return list.sort((a, b) => a.code.localeCompare(b.code, 'pt-BR', { numeric: true, sensitivity: 'base' }));
-}
-
-function matchesSearch(doc) {
-  if (state.discipline !== 'ALL' && doc.discipline !== state.discipline) return false;
-  const q = state.query.trim().toLocaleLowerCase('pt-BR');
-  if (!q) return true;
-  return `${doc.code} ${doc.title}`.toLocaleLowerCase('pt-BR').includes(q);
-}
-
-function disciplineClass(value) {
-  const text = String(value || '').toLowerCase();
-  if (text.includes('elétr')) return 'gold';
-  if (text.includes('civil')) return 'green';
-  return '';
-}
-
-async function renderDocuments(page) {
-  const filters = disciplines(state.docs);
-  const visible = sortedDocuments(state.docs.filter(matchesSearch));
-  const files = new Map(await documentFiles(visible));
-  const rows = visible.map(doc => {
-    const file = files.get(doc.id);
-    const statusClass = file?.blob ? 'updated' : 'ready';
-    const statusLabel = file?.blob ? 'Disponível offline' : 'Baixar';
-    return { doc, file, statusClass, statusLabel };
+function filteredDocuments() {
+  const query = state.query.trim().toLowerCase();
+  return state.docs.filter(doc => {
+    const queryMatch = !query || [doc.code, doc.title, doc.description].some(value => String(value || '').toLowerCase().includes(query));
+    const disciplineMatch = state.discipline === 'ALL' || doc.discipline === state.discipline;
+    return queryMatch && disciplineMatch;
   });
+}
 
-  page.innerHTML = `<div class="page-head"><div><h1>Documentos</h1><p>Pesquise por código ou descrição e filtre por sistema.</p></div><div class="page-actions"><button class="btn btn-outline" data-sync type="button">${icon('sync')} Sincronizar</button></div></div>
-  <section class="search-panel">
-    <form id="document-search" class="search-row">
-      <div class="input-with-icon">${icon('search')}<input class="input-control" id="document-query" value="${esc(state.query)}" placeholder="Buscar por código ou descrição..." aria-label="Buscar documentos"></div>
-      <button class="btn btn-primary" type="submit">${icon('search')} Pesquisar</button>
-    </form>
-    <p class="search-hint">Dica: pressione Enter para pesquisar</p>
-    <div class="filter-row"><span class="filter-label">Filtrar por sistema:</span>
-      ${['ALL', ...filters].map(filter => `<button class="filter-chip ${state.discipline === filter ? 'active' : ''}" data-filter="${esc(filter)}" type="button">${filter === 'ALL' ? 'Todos' : esc(filter)}</button>`).join('')}
-      ${state.discipline !== 'ALL' || state.query ? '<button class="clear-filter" data-clear-filter type="button">Limpar filtros ×</button>' : ''}
-    </div>
-  </section>
-  <div class="results-bar"><strong>${visible.length.toLocaleString('pt-BR')} documento(s) encontrado(s)</strong><div class="results-tools"><label for="sort-docs">Ordenar por:</label><select id="sort-docs"><option value="code" ${state.sort === 'code' ? 'selected' : ''}>Código (A-Z)</option><option value="title" ${state.sort === 'title' ? 'selected' : ''}>Descrição (A-Z)</option><option value="updated" ${state.sort === 'updated' ? 'selected' : ''}>Mais recentes</option></select></div></div>
-  ${visible.length ? `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th style="width:15%">Código</th><th>Descrição</th><th style="width:15%">Sistema</th><th style="width:9%">Revisão</th><th style="width:15%">Status</th><th style="width:16%">Atualizado em</th><th style="width:8%;text-align:right">Ações</th></tr></thead><tbody>
-    ${rows.map(({ doc, statusClass, statusLabel }) => `<tr><td><button class="doc-code" data-open-doc="${doc.id}" type="button">${icon('file')} ${esc(doc.code)}</button></td><td><span class="doc-description">${esc(doc.title)}</span></td><td><span class="system-tag ${disciplineClass(doc.discipline)}">${esc(doc.discipline)}</span></td><td>Rev. ${esc(doc.revision)}</td><td><span class="status-badge ${statusClass}">${esc(statusLabel)}</span></td><td>${esc(formatDate(doc.updated_at, { dateStyle: 'short', timeStyle: 'short' }))}</td><td><div class="table-actions"><button data-open-doc="${doc.id}" type="button" aria-label="Abrir documento">${icon('download')}</button></div></td></tr>`).join('')}
-  </tbody></table></div>
-  <div class="mobile-document-list">${rows.map(({ doc, statusClass, statusLabel }) => `<article class="mobile-doc-card"><div class="mobile-doc-top"><button class="doc-code" data-open-doc="${doc.id}" type="button">${icon('file')} ${esc(doc.code)}</button><span class="status-badge ${statusClass}">${esc(statusLabel)}</span></div><span class="doc-description">${esc(doc.title)}</span><div class="mobile-doc-meta"><span class="system-tag ${disciplineClass(doc.discipline)}">${esc(doc.discipline)}</span><span class="status-badge ready">Rev. ${esc(doc.revision)}</span></div><div class="mobile-doc-actions"><button class="btn btn-outline" data-open-doc="${doc.id}" type="button">Abrir ${icon('arrow')}</button></div></article>`).join('')}</div>
-  <div class="pagination"><button class="active" type="button">1</button></div>` : `<div class="empty-state"><span class="quick-icon">${icon('search')}</span><h3>Nenhum documento encontrado</h3><p>Ajuste a pesquisa ou os filtros.</p></div>`}`;
-
+function renderDocuments(page) {
+  const docs = filteredDocuments();
+  const disciplineOptions = disciplines(state.docs);
+  page.innerHTML = `<div class="page-head"><div><h1>Documentos</h1><p>Consulte documentos técnicos por código, descrição e disciplina.</p></div></div>
+    <section class="search-panel">
+      <form id="document-search" class="search-row">
+        <div class="input-with-icon">${icon('search')}<input class="input-control" name="query" value="${esc(state.query)}" placeholder="Buscar por código ou descrição..." aria-label="Buscar documentos"></div>
+        <button class="btn btn-primary" type="submit">Pesquisar</button>
+      </form>
+      <div class="filter-row"><span class="filter-label">Filtrar por disciplina:</span>${['ALL', ...disciplineOptions].map(value => `<button type="button" class="filter-chip ${state.discipline === value ? 'active' : ''}" data-discipline="${esc(value)}">${value === 'ALL' ? 'Todas' : esc(value)}</button>`).join('')}<button type="button" class="btn btn-ghost clear-filter" data-clear>Limpar filtros</button></div>
+    </section>
+    <div class="results-bar"><strong>${docs.length.toLocaleString('pt-BR')} documento(s) encontrado(s)</strong><span class="subtle">Ordenar por <select id="sort-select"><option value="code" ${state.sort === 'code' ? 'selected' : ''}>Código</option><option value="revision" ${state.sort === 'revision' ? 'selected' : ''}>Revisão</option></select></span></div>
+    ${documentTable(docs)}`;
   page.querySelector('#document-search').onsubmit = event => {
     event.preventDefault();
-    state.query = page.querySelector('#document-query').value.trim();
+    state.query = new FormData(event.currentTarget).get('query')?.toString() || '';
     renderDocuments(page);
   };
-  page.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => {
-    state.discipline = button.dataset.filter;
+  page.querySelectorAll('[data-discipline]').forEach(button => button.onclick = () => {
+    state.discipline = button.dataset.discipline;
     renderDocuments(page);
   });
-  page.querySelector('[data-clear-filter]')?.addEventListener('click', () => {
+  page.querySelector('[data-clear]').onclick = () => {
     state.query = '';
     state.discipline = 'ALL';
     renderDocuments(page);
-  });
-  page.querySelector('#sort-docs').onchange = event => {
+  };
+  page.querySelector('#sort-select').onchange = event => {
     state.sort = event.target.value;
     renderDocuments(page);
   };
-  page.querySelectorAll('[data-open-doc]').forEach(button => button.onclick = () => openDocument(button.dataset.openDoc));
-  page.querySelector('[data-sync]')?.addEventListener('click', doSync);
+  bindDocumentOpen(page);
+}
+
+function documentTable(docs) {
+  const sorted = sortDocuments(docs, state.sort);
+  return `<div class="doc-table-wrap"><table class="doc-table"><thead><tr><th>Código</th><th>Descrição</th><th>Disciplina</th><th>Tipo</th><th>Revisão</th><th>Status</th><th></th></tr></thead><tbody>${sorted.map(doc => `<tr><td><span class="doc-code">${esc(doc.code)}</span></td><td><span class="doc-description">${esc(doc.title)}</span></td><td>${esc(doc.discipline)}</td><td>${esc(doc.type)}</td><td>Rev. ${esc(doc.revision)}</td><td>${statusBadge(doc.status)}</td><td><span class="table-actions"><button type="button" data-open="${doc.id}" aria-label="Abrir documento">${icon('download')}</button></span></td></tr>`).join('')}</tbody></table></div>`;
+}
+
+function statusBadge(status) {
+  const map = { current: ['updated', 'Atualizado'], outdated: ['outdated', 'Desatualizado'], pending: ['pending', 'Pendente'] };
+  const [cls, label] = map[status] || ['pending', status || '—'];
+  return `<span class="status-badge ${cls}">${esc(label)}</span>`;
 }
 
 async function openDocument(id) {
-  const doc = state.docs.find(item => item.id === id) || state.adminDocs.find(item => item.id === id);
-  if (!doc) return toast('Documento não encontrado.', true);
-  let file = await getFile(id);
-  if (!file?.blob && navigator.onLine) {
-    await doSync();
-    file = await getFile(id);
-  }
-  if (!file?.blob) return toast('PDF ainda não está disponível offline.', true);
+  const doc = state.docs.find(item => item.id === id);
+  const file = await getFile(id);
+  if (!doc || !file?.blob) return toast('Documento não está disponível offline.', true);
   rememberDocument(id);
   const url = URL.createObjectURL(file.blob);
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  backdrop.innerHTML = `<section class="modal viewer" role="dialog" aria-modal="true" aria-label="Documento ${esc(doc.code)}">
-    <header class="modal-head"><div class="modal-head-copy"><strong>${esc(doc.code)} · ${esc(doc.title)}</strong><small>${esc(doc.discipline)} · Rev. ${esc(doc.revision)} · Disponível offline</small></div><button class="btn btn-outline" data-close type="button">${icon('close')} Fechar</button></header>
-    <iframe class="viewer-frame" src="${url}" title="${esc(doc.code)} - ${esc(doc.title)}"></iframe>
-  </section>`;
-  const close = () => { URL.revokeObjectURL(url); backdrop.remove(); };
-  backdrop.querySelector('[data-close]').onclick = close;
-  backdrop.addEventListener('click', event => { if (event.target === backdrop) close(); });
-  document.body.append(backdrop);
-}
-
-async function renderProfile(page) {
-  const meta = metadata();
-  const photo = avatarValue();
-  page.innerHTML = `<div class="page-head"><div><h1>Perfil</h1><p>Atualize suas informações pessoais e credenciais de acesso.</p></div></div>
-  <section class="profile-layout">
-    <aside class="profile-side">
-      <article class="profile-card"><div id="profile-photo" class="profile-photo">${photo ? `<img src="${photo}" alt="Foto do perfil">` : esc(initials(state.member.display_name))}</div><div class="profile-photo-actions"><input id="avatar-input" type="file" accept="image/jpeg,image/png" hidden><button class="btn btn-outline" id="avatar-button" type="button">${icon('upload')} Alterar foto</button><small>JPG, PNG até 5MB · salvo neste dispositivo</small></div></article>
-      <article class="profile-card access-card"><h3>Perfil de acesso</h3><div class="access-role"><span class="quick-icon">${icon(isAdmin() ? 'shield' : 'user')}</span><div><strong>${esc(accessLabel())}</strong><p>${isAdmin() ? 'Acesso administrativo, documentos, usuários e auditoria.' : 'Acesso a documentos e sincronização.'}</p></div></div></article>
-    </aside>
-    <div class="profile-main">
-      <form id="profile-form" class="profile-section"><div class="profile-section-head"><h2>Informações pessoais</h2><button class="btn btn-outline" type="submit">Salvar alterações</button></div><div class="profile-grid">
-        <label class="field"><span>Nome completo</span><input name="display_name" value="${esc(state.member.display_name)}" required></label>
-        <label class="field"><span>Cargo</span><input name="cargo" value="${esc(meta.cargo || (isAdmin() ? 'Administrador' : ''))}" placeholder="Supervisor / Encarregado"></label>
-        <label class="field"><span>E-mail</span><input value="${esc(state.member.user?.email || '')}" disabled></label>
-        <label class="field"><span>Telefone</span><input name="telefone" value="${esc(meta.telefone || '')}" placeholder="(11) 99999-9999"></label>
-      </div></form>
-      <form id="password-form" class="profile-section"><div class="profile-section-head"><h2>Alterar senha</h2></div><div class="password-grid">
-        <label class="field"><span>Senha atual</span><input name="current" type="password" autocomplete="current-password" required></label>
-        <label class="field"><span>Nova senha</span><input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
-        <label class="field"><span>Confirmar nova senha</span><input name="confirm" type="password" minlength="8" autocomplete="new-password" required></label>
-        <button class="btn btn-primary" type="submit">${icon('key')} Alterar senha</button>
-      </div></form>
-    </div>
-  </section>`;
-
-  page.querySelector('#avatar-button').onclick = () => page.querySelector('#avatar-input').click();
-  page.querySelector('#avatar-input').onchange = event => handleAvatar(event.target.files?.[0]);
-  page.querySelector('#profile-form').onsubmit = async event => {
-    event.preventDefault();
-    const button = event.currentTarget.querySelector('button[type="submit"]');
-    button.disabled = true;
-    try {
-      const data = new FormData(event.currentTarget);
-      state.member = await updateOwnProfile({
-        display_name: data.get('display_name'),
-        cargo: data.get('cargo'),
-        telefone: data.get('telefone')
-      });
-      cacheMember();
-      document.querySelector('#header-user-name').textContent = state.member.display_name;
-      document.querySelector('#header-user-role').textContent = accessLabel();
-      toast('Perfil atualizado.');
-    } catch (error) {
-      toast(error.message, true);
-    } finally {
-      button.disabled = false;
-    }
-  };
-  page.querySelector('#password-form').onsubmit = async event => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    const current = String(data.get('current') || '');
-    const password = String(data.get('password') || '');
-    const confirm = String(data.get('confirm') || '');
-    if (password !== confirm) return toast('A confirmação da nova senha não confere.', true);
-    const button = event.currentTarget.querySelector('button[type="submit"]');
-    button.disabled = true;
-    try {
-      await signIn(state.member.user?.email, current);
-      await changeOwnPassword(password);
-      event.currentTarget.reset();
-      toast('Senha alterada com sucesso.');
-    } catch (error) {
-      toast(error.message, true);
-    } finally {
-      button.disabled = false;
-    }
-  };
-}
-
-async function handleAvatar(file) {
-  if (!file) return;
-  if (!['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-    return toast('Use uma imagem JPG ou PNG de até 5MB.', true);
-  }
-  try {
-    const dataUrl = await resizeAvatar(file);
-    localStorage.setItem(avatarKey(), dataUrl);
-    document.querySelector('#profile-photo').innerHTML = `<img src="${dataUrl}" alt="Foto do perfil">`;
-    document.querySelector('.user-chip .avatar').innerHTML = `<img src="${dataUrl}" alt="Foto do perfil">`;
-    toast('Foto atualizada neste dispositivo.');
-  } catch {
-    toast('Não foi possível processar a foto.', true);
-  }
-}
-
-function resizeAvatar(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = reject;
-    reader.onload = () => {
-      const image = new Image();
-      image.onerror = reject;
-      image.onload = () => {
-        const size = Math.min(image.width, image.height);
-        const sx = (image.width - size) / 2;
-        const sy = (image.height - size) / 2;
-        const canvas = document.createElement('canvas');
-        canvas.width = 240;
-        canvas.height = 240;
-        const context = canvas.getContext('2d');
-        context.drawImage(image, sx, sy, size, size, 0, 0, 240, 240);
-        resolve(canvas.toDataURL('image/jpeg', .82));
-      };
-      image.src = reader.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
-
-function eventLabel(event) {
-  return ({
-    CREATED: 'Documento criado',
-    METADATA_UPDATED: 'Metadados atualizados',
-    REVISION_UPDATED: 'Nova revisão',
-    ACTIVATED: 'Documento ativado',
-    DEACTIVATED: 'Documento desativado'
-  })[event] || event;
-}
-
-async function ensureAuditData() {
-  if (!navigator.onLine) throw new Error('A área administrativa exige conexão.');
-  const [docs, members, audit] = await Promise.all([
-    listAdmin(),
-    listMembers(),
-    listRecentDocumentHistory(60)
-  ]);
-  state.adminDocs = docs;
-  state.members = members;
-  state.audit = audit;
-}
-
-async function renderAudit(page) {
-  page.innerHTML = `<div class="page-head"><div><h1>Conferência / Auditoria</h1><p>Painel administrativo de conformidade e gestão documental.</p></div><div class="page-actions"><button class="btn btn-outline" data-refresh type="button">${icon('sync')} Atualizar</button></div></div><div class="empty-state"><span class="quick-icon">${icon('sync')}</span><h3>Carregando dados administrativos…</h3></div>`;
-  try {
-    await ensureAuditData();
-  } catch (error) {
-    page.innerHTML += `<div class="login-error">${esc(error.message)}</div>`;
-    return;
-  }
-  renderAuditContent(page);
-}
-
-function renderAuditContent(page) {
-  const inactiveDocs = state.adminDocs.filter(doc => !doc.active).length;
-  const activeMembers = state.members.filter(member => member.active).length;
-  const pendingMembers = state.members.filter(member => !member.active).length;
-  const revisionEvents = state.audit.filter(item => item.event_type === 'REVISION_UPDATED').length;
-
-  page.innerHTML = `<div class="page-head"><div><h1>Conferência / Auditoria</h1><p>Painel administrativo de conformidade e auditoria.</p></div><div class="page-actions"><button class="btn btn-outline" data-refresh type="button">${icon('sync')} Atualizar</button></div></div>
-  <div class="admin-tabs"><button class="admin-tab ${state.adminTab === 'overview' ? 'active' : ''}" data-admin-tab="overview" type="button">Visão geral</button><button class="admin-tab ${state.adminTab === 'documents' ? 'active' : ''}" data-admin-tab="documents" type="button">Documentos</button><button class="admin-tab ${state.adminTab === 'users' ? 'active' : ''}" data-admin-tab="users" type="button">Usuários</button><button class="admin-tab ${state.adminTab === 'history' ? 'active' : ''}" data-admin-tab="history" type="button">Histórico</button></div>
-  <div id="admin-content"></div>`;
-  page.querySelectorAll('[data-admin-tab]').forEach(button => button.onclick = () => {
-    state.adminTab = button.dataset.adminTab;
-    renderAuditContent(page);
-  });
-  page.querySelector('[data-refresh]').onclick = async () => {
-    try { await ensureAuditData(); renderAuditContent(page); toast('Dados atualizados.'); }
-    catch (error) { toast(error.message, true); }
-  };
-  const content = page.querySelector('#admin-content');
-  if (state.adminTab === 'documents') renderAdminDocuments(content);
-  else if (state.adminTab === 'users') renderAdminUsers(content);
-  else if (state.adminTab === 'history') renderHistory(content);
-  else renderAuditOverview(content, { inactiveDocs, activeMembers, pendingMembers, revisionEvents });
-}
-
-function renderAuditOverview(content, metrics) {
-  const recent = state.audit.slice(0, 6);
-  content.innerHTML = `<section class="stats-grid">
-    ${metricCard('Total de documentos', state.adminDocs.length, 'file')}
-    ${metricCard('Revisões recentes', metrics.revisionEvents, 'history')}
-    ${metricCard('Usuários ativos', metrics.activeMembers, 'users')}
-    ${metricCard('Documentos inativos', metrics.inactiveDocs, 'alert', metrics.inactiveDocs ? 'warn' : '')}
-    ${metricCard('Acessos pendentes', metrics.pendingMembers, 'clock', metrics.pendingMembers ? 'warn' : '')}
-  </section>
-  <section class="audit-grid">
-    <article class="panel-card"><h3>Revisões recentes</h3><table class="audit-table"><thead><tr><th>Documento</th><th>Revisão</th><th>Evento</th><th>Data</th></tr></thead><tbody>${recent.filter(item => item.event_type === 'REVISION_UPDATED').slice(0, 5).map(item => `<tr><td>${esc(item.code)}</td><td>Rev. ${esc(item.revision)}</td><td>${esc(eventLabel(item.event_type))}</td><td>${esc(formatDate(item.recorded_at, { dateStyle: 'short', timeStyle: 'short' }))}</td></tr>`).join('') || '<tr><td colspan="4">Nenhuma revisão recente.</td></tr>'}</tbody></table></article>
-    <article class="panel-card"><h3>Log de atividades</h3><div class="activity-list">${recent.map(item => `<div class="activity-row"><span class="activity-dot"></span><div><strong>${esc(item.code)}</strong> — ${esc(eventLabel(item.event_type))}<br><span class="subtle">${esc(formatDate(item.recorded_at, { dateStyle: 'short', timeStyle: 'short' }))}</span></div></div>`).join('') || '<span class="subtle">Sem atividades.</span>'}</div></article>
-    <article class="panel-card"><h3>Gestão de usuários</h3><div class="metric-number">${state.members.length}</div><div class="metric-caption">${metrics.activeMembers} ativo(s)</div><button class="btn btn-ghost" data-go-users type="button" style="padding-left:0;margin-top:8px">Gerenciar usuários ${icon('arrow')}</button><h3 style="margin-top:18px">Conformidade</h3><div class="metric-number">${state.adminDocs.length ? Math.round(((state.adminDocs.length - metrics.inactiveDocs) / state.adminDocs.length) * 100) : 100}%</div><div class="metric-caption">documentos ativos</div></article>
-  </section>`;
-  content.querySelector('[data-go-users]').onclick = () => { state.adminTab = 'users'; renderAuditContent(document.querySelector('#page')); };
-}
-
-function metricCard(label, value, ico, extra = '') {
-  return `<article class="metric-card ${extra}"><span class="label">${esc(label)}</span><span class="value">${Number(value).toLocaleString('pt-BR')}</span><span class="delta">Atualizado agora</span><span class="metric-icon">${icon(ico)}</span></article>`;
-}
-
-function renderAdminDocuments(content) {
-  content.innerHTML = `<div class="page-actions" style="justify-content:flex-end;margin-bottom:12px"><button class="btn btn-primary" data-new-doc type="button">${icon('file')} Cadastrar documento</button></div><div class="doc-table-wrap"><table class="doc-table"><thead><tr><th style="width:17%">Código</th><th>Descrição</th><th style="width:16%">Sistema</th><th style="width:9%">Revisão</th><th style="width:12%">Status</th><th style="width:16%">Atualizado</th><th style="width:10%;text-align:right">Ações</th></tr></thead><tbody>${state.adminDocs.map(doc => `<tr><td><button class="doc-code" data-history-doc="${doc.id}" type="button">${icon('file')} ${esc(doc.code)}</button></td><td><span class="doc-description">${esc(doc.title)}</span></td><td><span class="system-tag ${disciplineClass(doc.discipline)}">${esc(doc.discipline)}</span></td><td>Rev. ${esc(doc.revision)}</td><td><span class="status-badge ${doc.active ? 'updated' : 'inactive'}">${doc.active ? 'Ativo' : 'Inativo'}</span></td><td>${esc(formatDate(doc.updated_at, { dateStyle: 'short', timeStyle: 'short' }))}</td><td><div class="table-actions"><button data-edit-doc="${doc.id}" type="button" aria-label="Editar">${icon('edit')}</button><button data-history-doc="${doc.id}" type="button" aria-label="Histórico">${icon('history')}</button></div></td></tr>`).join('')}</tbody></table></div>`;
-  content.querySelector('[data-new-doc]').onclick = () => openDocumentEditor(null);
-  content.querySelectorAll('[data-edit-doc]').forEach(button => button.onclick = () => openDocumentEditor(state.adminDocs.find(doc => doc.id === button.dataset.editDoc)));
-  content.querySelectorAll('[data-history-doc]').forEach(button => button.onclick = () => openDocumentHistory(button.dataset.historyDoc));
-}
-
-function openDocumentEditor(doc) {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  backdrop.innerHTML = `<section class="modal" role="dialog" aria-modal="true"><header class="modal-head"><div class="modal-head-copy"><strong>${doc ? 'Editar documento' : 'Cadastrar documento'}</strong><small>${doc ? `${esc(doc.code)} · Rev. ${esc(doc.revision)}` : 'Novo documento técnico'}</small></div><button class="btn btn-outline" data-close type="button">${icon('close')} Fechar</button></header><div class="modal-body"><form id="document-admin-form" class="admin-form"><label class="field"><span>Código</span><input name="code" value="${esc(doc?.code || '')}" required></label><label class="field"><span>Revisão</span><input name="revision" value="${esc(doc?.revision || '')}" required></label><label class="field wide"><span>Descrição</span><input name="title" value="${esc(doc?.title || '')}" required></label><label class="field"><span>Sistema</span><input name="discipline" value="${esc(doc?.discipline || '')}" required></label><label class="field"><span>PDF</span><input name="file" type="file" accept="application/pdf,.pdf" ${doc ? '' : 'required'}></label><label class="field"><span>Status</span><select name="active"><option value="true" ${doc?.active === false ? '' : 'selected'}>Ativo</option><option value="false" ${doc?.active === false ? 'selected' : ''}>Inativo</option></select></label><div class="wide" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">${icon('check')} ${doc ? 'Salvar alterações' : 'Cadastrar documento'}</button></div></form></div></section>`;
-  const close = () => backdrop.remove();
-  backdrop.querySelector('[data-close]').onclick = close;
-  backdrop.querySelector('#document-admin-form').onsubmit = async event => {
-    event.preventDefault();
-    const button = event.currentTarget.querySelector('button[type="submit"]');
-    button.disabled = true;
-    try {
-      const data = new FormData(event.currentTarget);
-      await saveDocument(doc, {
-        code: data.get('code'),
-        revision: data.get('revision'),
-        title: data.get('title'),
-        discipline: data.get('discipline'),
-        active: data.get('active') === 'true',
-        file: event.currentTarget.elements.file.files[0] || null
-      });
-      await ensureAuditData();
-      await doSync(false);
-      close();
-      renderAuditContent(document.querySelector('#page'));
-      toast('Documento salvo.');
-    } catch (error) {
-      toast(error.message, true);
-    } finally {
-      button.disabled = false;
-    }
-  };
-  document.body.append(backdrop);
-}
-
-async function openDocumentHistory(documentId) {
-  try {
-    const history = await listDocumentHistory(documentId);
-    const doc = state.adminDocs.find(item => item.id === documentId);
-    const backdrop = document.createElement('div');
-    backdrop.className = 'modal-backdrop';
-    backdrop.innerHTML = `<section class="modal" role="dialog" aria-modal="true"><header class="modal-head"><div class="modal-head-copy"><strong>Histórico · ${esc(doc?.code || '')}</strong><small>${esc(doc?.title || '')}</small></div><button class="btn btn-outline" data-close type="button">${icon('close')} Fechar</button></header><div class="modal-body"><div class="modal-list">${history.map(item => `<div class="modal-row"><div><strong>${esc(eventLabel(item.event_type))} · Rev. ${esc(item.revision)}</strong><div class="subtle" style="font-size:12px;margin-top:4px">${esc(formatDate(item.recorded_at, { dateStyle: 'medium', timeStyle: 'short' }))}</div></div><span class="status-badge ${item.active ? 'updated' : 'inactive'}">${item.active ? 'Ativo' : 'Inativo'}</span></div>`).join('') || '<div class="empty-state">Sem histórico.</div>'}</div></div></section>`;
-    backdrop.querySelector('[data-close]').onclick = () => backdrop.remove();
-    document.body.append(backdrop);
-  } catch (error) {
-    toast(error.message, true);
-  }
-}
-
-function renderAdminUsers(content) {
-  content.innerHTML = `<div class="panel-card"><h3>Gestão de usuários</h3><div class="user-list">${state.members.map(member => `<div class="user-row"><div><strong>${esc(member.display_name)}</strong><small>${esc(member.role)} · ${member.active ? 'Ativo' : 'Inativo'}</small></div><button class="btn btn-outline" data-edit-user="${member.user_id}" type="button">${icon('edit')} Editar</button></div>`).join('')}</div></div>`;
-  content.querySelectorAll('[data-edit-user]').forEach(button => button.onclick = () => openUserEditor(state.members.find(member => member.user_id === button.dataset.editUser)));
-}
-
-function openUserEditor(member) {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  backdrop.innerHTML = `<section class="modal" style="width:min(620px,100%)" role="dialog" aria-modal="true"><header class="modal-head"><div class="modal-head-copy"><strong>Editar usuário</strong><small>Perfis e acesso ao BYD Skyrail</small></div><button class="btn btn-outline" data-close type="button">${icon('close')} Fechar</button></header><div class="modal-body"><form id="user-admin-form" class="admin-form"><label class="field wide"><span>Nome</span><input name="display_name" value="${esc(member.display_name)}" required></label><label class="field"><span>Perfil</span><select name="role"><option value="USER" ${member.role === 'USER' ? 'selected' : ''}>USER</option><option value="ADMIN" ${member.role === 'ADMIN' ? 'selected' : ''}>ADMIN</option></select></label><label class="field"><span>Acesso</span><select name="active"><option value="true" ${member.active ? 'selected' : ''}>Ativo</option><option value="false" ${!member.active ? 'selected' : ''}>Inativo</option></select></label><div class="wide" style="display:flex;justify-content:flex-end"><button class="btn btn-primary" type="submit">${icon('check')} Salvar</button></div></form></div></section>`;
-  const close = () => backdrop.remove();
-  backdrop.querySelector('[data-close]').onclick = close;
-  backdrop.querySelector('#user-admin-form').onsubmit = async event => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    try {
-      await updateMember(member.user_id, {
-        display_name: data.get('display_name'),
-        role: data.get('role'),
-        active: data.get('active') === 'true'
-      });
-      await ensureAuditData();
-      close();
-      renderAuditContent(document.querySelector('#page'));
-      toast('Usuário atualizado.');
-    } catch (error) {
-      toast(error.message, true);
-    }
-  };
-  document.body.append(backdrop);
-}
-
-function renderHistory(content) {
-  content.innerHTML = `<article class="panel-card"><h3>Histórico de atividades</h3><table class="audit-table"><thead><tr><th>Documento</th><th>Evento</th><th>Revisão</th><th>Sistema</th><th>Data</th></tr></thead><tbody>${state.audit.map(item => `<tr><td>${esc(item.code)}</td><td>${esc(eventLabel(item.event_type))}</td><td>Rev. ${esc(item.revision)}</td><td>${esc(item.discipline)}</td><td>${esc(formatDate(item.recorded_at, { dateStyle: 'short', timeStyle: 'short' }))}</td></tr>`).join('') || '<tr><td colspan="5">Sem histórico.</td></tr>'}</tbody></table></article>`;
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.innerHTML = `<section class="modal document-modal"><header class="modal-head"><div><strong>${esc(doc.code)}</strong><small>${esc(doc.title)} · Rev. ${esc(doc.revision)}</small></div><button class="btn btn-outline" data-close type="button">Fechar</button></header><iframe src="${url}#toolbar=1" title="${esc(doc.code)}"></iframe></section>`;
+  document.body.append(modal);
+  const close = () => { URL.revokeObjectURL(url); modal.remove(); };
+  modal.querySelector('[data-close]').onclick = close;
+  modal.onclick = event => { if (event.target === modal) close(); };
 }
 
 async function doSync(rerender = true) {
