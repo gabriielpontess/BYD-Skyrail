@@ -63,9 +63,19 @@ async function main(){
   assert.equal(await evaluate(`document.activeElement?.id`),'last-action','fechar modal empilhado deve restaurar foco ao modal anterior');
   await evaluate(`document.querySelector('#focus-modal-1').remove()`);await waitFor(`document.querySelector('#app').inert===false`);await sleep(80);
   assert.equal(await evaluate(`document.activeElement?.id`),'focus-opener','fechar último modal deve restaurar foco ao disparador');
+
+  // Formulário assíncrono: nem o botão Fechar pode remover a janela durante a operação.
+  await evaluate(`(()=>{const b=document.createElement('div');b.id='async-modal';b.className='modal-backdrop';b.innerHTML='<section class="modal"><header class="modal-head"><div class="modal-head-copy"><strong>Operação assíncrona</strong></div><button id="async-close" data-close type="button">Fechar</button></header><div class="modal-body"><form id="async-form"><button id="async-submit" type="submit">Salvar</button></form></div></section>';const form=b.querySelector('#async-form');form.onsubmit=async event=>{event.preventDefault();await new Promise(resolve=>setTimeout(resolve,300));b.dataset.completed='1'};b.querySelector('#async-close').onclick=()=>b.remove();document.body.append(b);return true})()`);
+  await waitFor(`document.querySelector('#async-form')?.dataset.systemicAsyncGuard==='1'`);
+  await evaluate(`document.querySelector('#async-form').requestSubmit()`);await waitFor(`document.querySelector('#async-modal')?.dataset.operationRunning==='1'`);
+  await evaluate(`document.querySelector('#async-close').click()`);await sleep(80);
+  assert.equal(await evaluate(`Boolean(document.querySelector('#async-modal'))`),true,'botão Fechar não pode vencer uma operação assíncrona');
+  await waitFor(`document.querySelector('#async-modal')?.dataset.completed==='1'&&document.querySelector('#async-modal')?.dataset.operationRunning==='0'`);
+  await evaluate(`document.querySelector('#async-close').click()`);await waitFor(`!document.querySelector('#async-modal')`);
+
   assert.equal(await evaluate(`document.body.classList.contains('has-modal-open')`),false,'body deve liberar scroll após o último modal');
   assert.deepEqual(await evaluate(`globalThis.__BYD_BOOT_DIAG?.errors||[]`),[],'nenhum erro de bootstrap deve surgir');
-  cdp.close();console.log('browser-modal-focus.mjs: ok — foco, pilha modal, inert e viewport baixo validados em Chrome real');
+  cdp.close();console.log('browser-modal-focus.mjs: ok — foco, pilha modal, operação assíncrona e viewport baixo validados em Chrome real');
 }
 
 let failure=null;try{await main()}catch(error){failure=error}finally{await stop(chrome);await stop(preview);if(profileDir)await rm(profileDir,{recursive:true,force:true}).catch(()=>{})}if(failure)throw failure;
