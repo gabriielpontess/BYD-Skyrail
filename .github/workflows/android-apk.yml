@@ -2,6 +2,9 @@ name: BYD Skyrail Android APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/local-documents-v1
 
 jobs:
   apk:
