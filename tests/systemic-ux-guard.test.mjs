@@ -21,6 +21,11 @@ assert.match(guard,/function wrapAsyncForms/,'formulários assíncronos dentro d
 assert.match(guard,/dataset\.operationRunning='1'/,'envio assíncrono deve marcar modal como ocupado');
 assert.match(guard,/CLOSE_SELECTOR/,'todas as famílias de botão Fechar devem passar pelo mesmo guard');
 assert.match(guard,/stopImmediatePropagation/,'fechamento durante operação deve ser interrompido antes do handler legado');
+assert.match(guard,/route==='audit'.*role==='ADMIN'/s,'Auditoria deve exigir ADMIN');
+assert.match(guard,/route==='controller-updates'.*role==='CONTROLLER'/s,'Atualizações deve exigir CONTROLLER');
+assert.match(guard,/\[data-document-packager\]/,'Packager deve ser removido fora da combinação ADMIN + Auditoria');
+assert.match(guard,/\[data-local-import\]/,'Importação deve ser removida de rotas incompatíveis com a role');
+assert.match(guard,/location\.hash='#\/home'/,'rota autenticada inválida deve ser normalizada para Home');
 assert.doesNotMatch(guard,/observe\(document\.body,\{[^}]*subtree:true/,'guard não deve observar toda a subárvore do body');
 
 console.log('systemic-ux-guard.test.mjs: ok');
