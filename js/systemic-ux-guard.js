@@ -7,7 +7,7 @@ const modalState=new WeakMap();
 const FOCUSABLE='button:not([disabled]),a[href],input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
 const CLOSE_SELECTOR='[data-close],[data-ux-close],[data-import-close],[data-packager-close],[data-pdf-close]';
 const NON_MODAL_ASYNC_ACTIONS='[data-home-action="sync"],[data-refresh]';
-let routeRepairScheduled=false;
+let routeRepairScheduled=false,avatarGeneration=0,avatarToastTimer=null;
 
 const originalViewerOpen=documentViewerService.open.bind(documentViewerService);
 let viewerOpening=false;
@@ -97,8 +97,6 @@ function wrapAsyncForms(backdrop){
   });
 }
 
-// Formulários assíncronos fora de modal (login/perfil/senha) também precisam de
-// single-flight. Desabilitar apenas o botão não bloqueia Enter/requestSubmit().
 function wrapPageForms(root=document){
   $$('form',root).forEach(form=>{
     if(form.closest('.modal-backdrop')||form.dataset.systemicPageAsyncGuard==='1'||typeof form.onsubmit!=='function')return;
@@ -115,8 +113,6 @@ function wrapPageForms(root=document){
   });
 }
 
-// Ações onclick assíncronas que não vivem em formulário recebem a mesma trava.
-// O wrapper espera a Promise real, então não depende de timeout arbitrário.
 function wrapPageAsyncActions(root=document){
   $$(NON_MODAL_ASYNC_ACTIONS,root).forEach(button=>{
     if(button.dataset.systemicAsyncClickGuard==='1'||typeof button.onclick!=='function')return;
@@ -130,7 +126,66 @@ function wrapPageAsyncActions(root=document){
     };
   });
 }
-function scanPageAsync(root=document){wrapPageForms(root);wrapPageAsyncActions(root)}
+
+function avatarToast(message,error=false){
+  const toast=$('#toast');if(!toast)return;
+  clearTimeout(avatarToastTimer);toast.textContent=message;toast.classList.toggle('error',error);toast.classList.add('show');
+  avatarToastTimer=setTimeout(()=>toast.classList.remove('show'),3600);
+}
+function resizeAvatarSafe(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();reader.onerror=reject;
+    reader.onload=()=>{
+      const image=new Image();image.onerror=reject;
+      image.onload=()=>{
+        try{
+          const size=Math.min(image.width,image.height);if(!size)throw new Error('Imagem vazia.');
+          const canvas=document.createElement('canvas');canvas.width=240;canvas.height=240;
+          const context=canvas.getContext('2d');if(!context)throw new Error('Canvas indisponível.');
+          context.drawImage(image,(image.width-size)/2,(image.height-size)/2,size,size,0,0,240,240);
+          resolve(canvas.toDataURL('image/jpeg',.82));
+        }catch(error){reject(error)}
+      };
+      image.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function guardAvatarInput(root=document){
+  const inputs=[];
+  if(root instanceof Element&&root.matches('#avatar-input'))inputs.push(root);
+  inputs.push(...$$('#avatar-input',root));
+  inputs.forEach(input=>{
+    if(input.dataset.systemicAvatarGuard==='1')return;
+    input.dataset.systemicAvatarGuard='1';
+    input.onchange=async event=>{
+      const file=event.currentTarget.files?.[0];if(!file)return;
+      if(!['image/jpeg','image/png'].includes(file.type)||file.size>5*1024*1024){
+        if(routeName()==='profile')avatarToast('Use uma imagem JPG ou PNG de até 5MB.',true);return;
+      }
+      const memberAtStart=cachedMember(),userId=memberAtStart?.user_id;if(!userId)return;
+      const generation=++avatarGeneration;
+      input.dataset.operationRunning='1';input.setAttribute('aria-busy','true');
+      try{
+        const dataUrl=await resizeAvatarSafe(file);
+        if(generation!==avatarGeneration)return;
+        localStorage.setItem(`byd-skyrail:avatar:${userId}`,dataUrl);
+        const stillCurrent=cachedMember()?.user_id===userId&&routeName()==='profile';
+        if(!stillCurrent)return;
+        const profilePhoto=$('#profile-photo'),headerAvatar=$('.user-chip .avatar');
+        if(!profilePhoto||!headerAvatar)return;
+        profilePhoto.innerHTML=`<img src="${dataUrl}" alt="Foto do perfil">`;
+        headerAvatar.innerHTML=`<img src="${dataUrl}" alt="Foto do perfil">`;
+        avatarToast('Foto atualizada neste dispositivo.');
+      }catch{
+        if(generation===avatarGeneration&&cachedMember()?.user_id===userId&&routeName()==='profile')avatarToast('Não foi possível processar a foto.',true);
+      }finally{
+        if(input.isConnected){input.dataset.operationRunning='0';input.setAttribute('aria-busy','false')}
+      }
+    };
+  });
+}
+function scanPageAsync(root=document){wrapPageForms(root);wrapPageAsyncActions(root);guardAvatarInput(root)}
 
 function syncModalStack(){
   const open=visibleModals(),top=open.at(-1)||null,app=$('#app');
@@ -177,6 +232,6 @@ if(document.body)new MutationObserver(records=>{
 
 const appRoot=$('#app');
 if(appRoot)new MutationObserver(()=>queueMicrotask(()=>{sanitizeRestrictedUi();scanPageAsync(appRoot)})).observe(appRoot,{childList:true,subtree:true});
-addEventListener('hashchange',()=>{queueMicrotask(()=>scanModals());queueMicrotask(()=>{sanitizeRestrictedUi();scanPageAsync(appRoot||document)})});
+addEventListener('hashchange',()=>{avatarGeneration++;queueMicrotask(()=>scanModals());queueMicrotask(()=>{sanitizeRestrictedUi();scanPageAsync(appRoot||document)})});
 addEventListener('load',()=>{scanModals();sanitizeRestrictedUi();scanPageAsync()});
 scanModals();sanitizeRestrictedUi();scanPageAsync();
