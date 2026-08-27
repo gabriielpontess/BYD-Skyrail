@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import { access,mkdtemp,rm } from 'node:fs/promises';
+import { constants as fsConstants } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawn,spawnSync } from 'node:child_process';
+
+const HOST='127.0.0.1',PORT=4176,DEBUG_PORT=42500+Math.floor(Math.random()*400);
+const BASE=`http://${HOST}:${PORT}/`,ROOT=fileURLToPath(new URL('../',import.meta.url));
+const VITE_BIN=fileURLToPath(new URL('../node_modules/vite/bin/vite.js',import.meta.url));
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+let preview=null,chrome=null,profileDir=null;
+
+const documents=Array.from({length:143},(_,index)=>({
+  id:`rfo-${index+1}`,code:`RFO-${String(index+1).padStart(3,'0')}`,title:`Documento RFO ${index+1}`,description:`Descrição documental ${index+1}`,revision:'0',system_id:'rfo',system_name:'RFO',discipline:index%2?'INSTALAÇÃO':'ELÉTRICA',document_type:index%2?'Desenho':'Procedimento',approval_status:'APROVADO',source_status:'APROVADO',status:'active',active:true,file:`rfo-${index+1}.pdf`,file_path:`rfo-${index+1}.pdf`,updated_at:'2026-08-27T12:00:00.000Z'
+}));
+const catalog={schemaVersion:1,catalogVersion:'documents-state-143',generatedAt:'2026-08-27T12:00:00.000Z',packageVersion:'documents-state-143',systems:[{id:'rfo',name:'RFO',active:true}],documents};
+const member=id=>({display_name:`Usuário ${id}`,role:'USER',user_id:id,user:{email:`${id}@local.test`,user_metadata:{cargo:'Usuário'}}});
+
+async function exists(path){try{await access(path,fsConstants.X_OK);return true}catch{return false}}
+async function findChrome(){const candidates=[process.env.CHROME_PATH,process.env.GOOGLE_CHROME_BIN];if(process.platform==='win32')for(const root of [process.env.PROGRAMFILES,process.env['PROGRAMFILES(X86)'],process.env.LOCALAPPDATA].filter(Boolean))candidates.push(join(root,'Google','Chrome','Application','chrome.exe'));else if(process.platform==='darwin')candidates.push('/Applications/Google Chrome.app/Contents/MacOS/Google Chrome');else{candidates.push('/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium','/usr/bin/chromium-browser');for(const command of ['google-chrome','google-chrome-stable','chromium','chromium-browser']){const found=spawnSync('which',[command],{encoding:'utf8'});if(found.status===0)candidates.push(found.stdout.trim())}}for(const path of candidates)if(path&&await exists(path))return path;throw new Error('Debugger do Chrome indisponível: Chrome/Chromium não encontrado.')}
+async function waitHttp(){for(let i=0;i<100;i++){try{if((await fetch(BASE)).ok)return}catch{}await sleep(100)}throw new Error('Vite preview não iniciou.')}
+async function stop(child){if(!child||child.exitCode!==null)return;try{child.kill('SIGTERM')}catch{}await sleep(300);if(child.exitCode===null)try{child.kill('SIGKILL')}catch{}}
+async function debuggerTarget(){for(let i=0;i<100;i++){try{const list=await(await fetch(`http://${HOST}:${DEBUG_PORT}/json/list`)).json();const page=list.find(item=>item.type==='page'&&item.webSocketDebuggerUrl);if(page)return page}catch{}await sleep(100)}throw new Error('Debugger do Chrome indisponível.')}
+class CDP{constructor(url){this.url=url;this.id=0;this.pending=new Map()}async connect(){this.ws=new WebSocket(this.url);await new Promise((resolve,reject)=>{this.ws.addEventListener('open',resolve,{once:true});this.ws.addEventListener('error',reject,{once:true})});this.ws.addEventListener('message',event=>{let message;try{message=JSON.parse(event.data)}catch{return}const pending=this.pending.get(message.id);if(!pending)return;this.pending.delete(message.id);message.error?pending.reject(new Error(message.error.message)):pending.resolve(message.result)})}send(method,params={},timeout=5000){const id=++this.id;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.pending.delete(id);reject(new Error(`${method} timeout`))},timeout);this.pending.set(id,{resolve:value=>{clearTimeout(timer);resolve(value)},reject:error=>{clearTimeout(timer);reject(error)}});this.ws.send(JSON.stringify({id,method,params}))})}close(){try{this.ws.close()}catch{}}}
+
+async function main(){
+  preview=spawn(process.execPath,[VITE_BIN,'preview','--host',HOST,'--port',String(PORT),'--strictPort'],{cwd:ROOT,stdio:'ignore'});await waitHttp();
+  profileDir=await mkdtemp(join(tmpdir(),'byd-doc-state-'));const chromePath=await findChrome();const args=[`--remote-debugging-port=${DEBUG_PORT}`,`--user-data-dir=${profileDir}`,'--headless=new','--disable-gpu','--disable-background-networking','--no-first-run','--no-default-browser-check','--window-size=1365,900','about:blank'];if(process.platform==='linux')args.unshift('--no-sandbox');chrome=spawn(chromePath,args,{stdio:'ignore'});
+  const cdp=new CDP((await debuggerTarget()).webSocketDebuggerUrl);await cdp.connect();await cdp.send('Page.enable');await cdp.send('Runtime.enable');
+  const evaluate=async expression=>{const result=await cdp.send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true,userGesture:true},7000);if(result.exceptionDetails)throw new Error(result.exceptionDetails.exception?.description||result.exceptionDetails.text);return result.result?.value};
+  const waitFor=async(expression,label=expression)=>{for(let i=0;i<140;i++){try{if(await evaluate(`Boolean(${expression})`))return}catch{}await sleep(50)}throw new Error(`Condição não atingida: ${label}`)};
+  await cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:`try{Object.defineProperty(Navigator.prototype,'onLine',{configurable:true,get(){return false}})}catch{};localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(member('user-a')))});localStorage.setItem('byd-skyrail:local-catalog-v1',${JSON.stringify(JSON.stringify(catalog))})`});
+  await cdp.send('Page.navigate',{url:`${BASE}#/home`});await waitFor(`document.querySelector('.system-home-card')`,'card RFO');
+  assert.ok((await evaluate(`document.querySelector('.system-home-card')?.textContent`)).includes('143 documento(s)'),'Home deve contar os 143 documentos do sistema');
+  await evaluate(`document.querySelector('.system-home-card').click()`);await waitFor(`location.hash.includes('system=rfo')&&document.querySelector('[data-local-results-count]')`,'Documentos RFO');
+  assert.equal(await evaluate(`document.querySelector('[data-local-results-count]').textContent.trim()`),'143 documento(s) encontrado(s)','total deve refletir o conjunto filtrado, não a página de 100 linhas');
+  assert.equal(await evaluate(`document.querySelectorAll('[data-local-layout="desktop"] tbody tr').length`),100,'primeira página deve conter 100 linhas');
+  const pagination=await evaluate(`(()=>{const root=document.querySelector('.local-pagination'),prev=root.querySelector('[data-local-page-prev]'),label=root.querySelector('span'),next=root.querySelector('[data-local-page-next]'),a=prev.getBoundingClientRect(),b=label.getBoundingClientRect(),c=next.getBoundingClientRect();return{prevWidth:a.width,nextWidth:c.width,nonOverlap:a.right<=b.left+1&&b.right<=c.left+1,overflow:root.scrollWidth-root.clientWidth}})()`);
+  assert.ok(pagination.prevWidth>=88&&pagination.nextWidth>=88,'Anterior/Próxima precisam de largura textual suficiente');assert.equal(pagination.nonOverlap,true,'controles da paginação não podem se sobrepor');assert.ok(pagination.overflow<=1,'paginação não pode gerar overflow horizontal');
+  await evaluate(`document.querySelector('[data-local-page-next]').click()`);await waitFor(`document.querySelector('.local-pagination span')?.textContent.includes('Página 2')`,'Página 2');
+  assert.equal(await evaluate(`document.querySelectorAll('[data-local-layout="desktop"] tbody tr').length`),43,'segunda página deve conter os 43 documentos restantes');assert.equal(await evaluate(`document.querySelector('[data-local-results-count]').textContent.trim()`),'143 documento(s) encontrado(s)','total deve permanecer 143 na página 2');
+
+  await evaluate(`(()=>{const input=document.querySelector('#local-document-search input[name="query"]');input.value='RFO-001';document.querySelector('#local-document-search').requestSubmit()})()`);await waitFor(`document.querySelector('[data-local-results-count]')?.textContent.trim()==='1 documento(s) encontrado(s)'`,'busca aplicada');
+  assert.equal(await evaluate(`document.querySelector('#local-document-search input[name="query"]').value`),'RFO-001');
+  await evaluate(`localStorage.setItem('byd-skyrail-member-cache',${JSON.stringify(JSON.stringify(member('user-b')))});location.hash='#/profile'`);await waitFor(`document.querySelector('.profile-layout')`,'Perfil após troca de identidade');await evaluate(`location.hash='#/documents?system=rfo'`);await waitFor(`document.querySelector('[data-local-results-count]')?.textContent.trim()==='143 documento(s) encontrado(s)'`,'Documentos da nova sessão');
+  assert.equal(await evaluate(`document.querySelector('#local-document-search input[name="query"]').value`),'','texto de busca não pode atravessar troca de usuário');assert.equal(await evaluate(`document.querySelector('[data-local-discipline]').value`),'ALL','disciplina não pode atravessar troca de usuário');assert.equal(await evaluate(`document.querySelector('[data-local-type]').value`),'ALL','tipo não pode atravessar troca de usuário');assert.equal(await evaluate(`document.querySelector('[data-local-approval-status]').value`),'ALL','status não pode atravessar troca de usuário');
+  assert.deepEqual(await evaluate(`globalThis.__BYD_BOOT_DIAG?.errors||[]`),[],'regressões documentais não podem gerar erro de bootstrap');
+  cdp.close();console.log('browser-documents-state.mjs: ok — total >100, paginação e reset por sessão validados em Chrome real');
+}
+let failure=null;try{await main()}catch(error){failure=error}finally{await stop(chrome);await stop(preview);if(profileDir)await rm(profileDir,{recursive:true,force:true}).catch(()=>{})}if(failure)throw failure;
