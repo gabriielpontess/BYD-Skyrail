@@ -284,7 +284,7 @@ public class NativePackageImporterPlugin extends Plugin {
             String system = cleanText(doc.optString("system_id", doc.optString("system_name", ""))).toLowerCase(new Locale("pt", "BR"));
             String key = code.toLowerCase(new Locale("pt", "BR")) + "|" + system;
             if (!documentKeys.add(key)) throw new Exception("Código duplicado no mesmo sistema: " + code);
-            if (isActive(doc) && !staged.contains("documents/" + file.replace('\\', '/'))) throw new Exception("Pacote incompleto: PDF não encontrado para " + code + ".");
+            if (isActive(doc) && !staged.contains("documents/" + file)) throw new Exception("Pacote incompleto: PDF não encontrado para " + code + ".");
         }
     }
 
@@ -352,8 +352,16 @@ public class NativePackageImporterPlugin extends Plugin {
     private String documentFileName(JSONObject doc) throws Exception {
         String file = cleanText(doc.optString("file", doc.optString("file_path", "")));
         if (file.isEmpty() || "null".equalsIgnoreCase(file)) throw new Exception("Há documento com campos obrigatórios ausentes no catálogo.");
-        if (file.contains("/") || file.contains("\\") || file.equals(".") || file.equals("..")) throw new Exception("Caminho de PDF inválido no catálogo: " + file);
-        return file;
+        String normalized = file.replace('\\', '/');
+        while (normalized.startsWith("./")) normalized = normalized.substring(2);
+        if (normalized.startsWith("/") || normalized.contains("\u0000") || !normalized.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
+            throw new Exception("Caminho de PDF inválido no catálogo: " + file);
+        }
+        String[] parts = normalized.split("/", -1);
+        for (String part : parts) {
+            if (part.isEmpty() || ".".equals(part) || "..".equals(part)) throw new Exception("Caminho de PDF inválido no catálogo: " + file);
+        }
+        return normalized;
     }
 
     private String requiredDocText(JSONObject doc, String key) throws Exception {
