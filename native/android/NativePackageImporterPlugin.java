@@ -25,6 +25,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -33,7 +34,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.zip.ZipFile;
 
 @CapacitorPlugin(name = "NativePackageImporter")
 public class NativePackageImporterPlugin extends Plugin {
@@ -81,6 +82,7 @@ public class NativePackageImporterPlugin extends Plugin {
         File stagedDocuments = new File(stagingRoot, "documents");
         if (!stagedDocuments.mkdirs() && !stagedDocuments.isDirectory()) throw new Exception("Não foi possível preparar a área temporária de importação.");
 
+        File sourceZip = new File(stagingRoot, "selected-package.zip");
         Map<String, String> metadata = new HashMap<>();
         Set<String> staged = new HashSet<>();
         Set<String> seenEntries = new HashSet<>();
@@ -89,64 +91,53 @@ public class NativePackageImporterPlugin extends Plugin {
         int entries = 0;
 
         try {
-            try (InputStream raw = getContext().getContentResolver().openInputStream(uri)) {
-                if (raw == null) throw new Exception("Não foi possível abrir o pacote selecionado.");
-                try (ZipInputStream zip = new ZipInputStream(new BufferedInputStream(raw, BUFFER_SIZE))) {
-                    ZipEntry entry;
-                    byte[] buffer = new byte[BUFFER_SIZE];
-                    while ((entry = zip.getNextEntry()) != null) {
-                        String name = normalizeEntryName(entry.getName());
-                        if (entry.isDirectory() || name.isEmpty()) {
-                            zip.closeEntry();
-                            continue;
-                        }
-                        if (!seenEntries.add(name)) throw new Exception("Pacote contém entrada duplicada: " + name);
-                        entries++;
-                        if (isMetadata(name)) {
-                            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            copySelectedPackage(uri, sourceZip);
+            try (ZipFile archive = new ZipFile(sourceZip)) {
+                Enumeration<? extends ZipEntry> iterator = archive.entries();
+                byte[] buffer = new byte[BUFFER_SIZE];
+                while (iterator.hasMoreElements()) {
+                    ZipEntry entry = iterator.nextElement();
+                    String name = normalizeEntryName(entry.getName());
+                    if (entry.isDirectory() || name.isEmpty()) continue;
+                    if (!seenEntries.add(name)) throw new Exception("Pacote contém entrada duplicada: " + name);
+                    entries++;
+                    long declared = entry.getSize();
+                    if (declared > MAX_TOTAL_UNCOMPRESSED_BYTES) throw new Exception("Pacote excede o limite seguro de conteúdo descompactado.");
+
+                    if (isMetadata(name)) {
+                        String base = baseName(name);
+                        if (metadata.containsKey(base)) throw new Exception("Pacote contém metadado duplicado: " + base);
+                        ReadResult result = readMetadataEntry(archive, entry, buffer, name, extractedBytes);
+                        extractedBytes = result.totalExtracted;
+                        metadata.put(base, result.text);
+                    } else if (isDocumentPdf(name)) {
+                        String relative = name.substring("documents/".length());
+                        File target = safeChild(stagedDocuments, relative);
+                        File parent = target.getParentFile();
+                        if (parent != null && !parent.mkdirs() && !parent.isDirectory()) throw new Exception("Não foi possível preparar a pasta do documento.");
+                        ensureFreeSpace(stagedDocuments);
+                        long written = 0L;
+                        try (InputStream input = new BufferedInputStream(archive.getInputStream(entry), BUFFER_SIZE);
+                             BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(target), BUFFER_SIZE)) {
                             int read;
-                            long total = 0L;
-                            while ((read = zip.read(buffer)) != -1) {
-                                total += read;
-                                extractedBytes += read;
-                                ensureExtractionLimit(extractedBytes);
-                                if (total > MAX_METADATA_BYTES) throw new Exception(name + " excede o limite seguro de metadados.");
+                            while ((read = input.read(buffer)) != -1) {
                                 out.write(buffer, 0, read);
-                            }
-                            String base = baseName(name);
-                            if (metadata.containsKey(base)) throw new Exception("Pacote contém metadado duplicado: " + base);
-                            metadata.put(base, out.toString(StandardCharsets.UTF_8.name()));
-                        } else if (isDocumentPdf(name)) {
-                            String relative = name.substring("documents/".length());
-                            File target = safeChild(stagedDocuments, relative);
-                            File parent = target.getParentFile();
-                            if (parent != null && !parent.mkdirs() && !parent.isDirectory()) throw new Exception("Não foi possível preparar a pasta do documento.");
-                            ensureFreeSpace(stagedDocuments);
-                            try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(target), BUFFER_SIZE)) {
-                                int read;
-                                while ((read = zip.read(buffer)) != -1) {
-                                    out.write(buffer, 0, read);
-                                    extractedBytes += read;
-                                    ensureExtractionLimit(extractedBytes);
-                                }
-                            }
-                            staged.add("documents/" + relative.replace('\\', '/'));
-                        } else {
-                            int read;
-                            while ((read = zip.read(buffer)) != -1) {
+                                written += read;
                                 extractedBytes += read;
                                 ensureExtractionLimit(extractedBytes);
                             }
                         }
-                        notifyProgress("extract", entries, name, 0, 0, null);
-                        zip.closeEntry();
+                        if (written <= 0L) throw new Exception("PDF vazio no pacote: " + relative);
+                        staged.add("documents/" + relative.replace('\\', '/'));
                     }
+                    notifyProgress("extract", entries, name, 0, 0, null);
                 }
             }
+            if (sourceZip.exists() && !sourceZip.delete()) sourceZip.deleteOnExit();
 
             String manifestText = metadata.get(MANIFEST);
             if (manifestText == null) throw new Exception("Pacote sem manifest.json.");
-            JSONObject manifestRaw = new JSONObject(manifestText);
+            JSONObject manifestRaw = parseJsonObject(MANIFEST, manifestText);
             String packageVersion = requiredText(manifestRaw, "packageVersion", "Manifesto sem packageVersion.");
             String catalogFile = cleanText(manifestRaw.optString("catalogFile", DEFAULT_CATALOG));
             if (catalogFile.isEmpty()) catalogFile = DEFAULT_CATALOG;
@@ -156,7 +147,7 @@ public class NativePackageImporterPlugin extends Plugin {
 
             String catalogText = metadata.get(DEFAULT_CATALOG);
             if (catalogText == null) throw new Exception("Pacote sem " + catalogFile + ".");
-            JSONObject catalog = new JSONObject(catalogText);
+            JSONObject catalog = parseJsonObject(DEFAULT_CATALOG, catalogText);
             JSONArray documents = catalog.optJSONArray("documents");
             if (documents == null) throw new Exception("Catálogo documents.json inválido.");
 
@@ -179,7 +170,7 @@ public class NativePackageImporterPlugin extends Plugin {
                 String code = requiredDocText(doc, "code");
                 String fileName = documentFileName(doc);
                 File source = safeChild(stagedDocuments, fileName);
-                if (!source.isFile()) throw new Exception("Arquivo ausente durante commit: " + fileName);
+                if (!source.isFile() || source.length() <= 0L) throw new Exception("Arquivo ausente ou vazio durante commit: " + fileName);
                 String finalName = safePart(packageVersion + "__" + runId + "__" + fileName);
                 File documentDir = safeChild(documentsRoot, safePart(id));
                 if (!documentDir.mkdirs() && !documentDir.isDirectory()) throw new Exception("Não foi possível criar a pasta do documento " + code + ".");
@@ -218,6 +209,64 @@ public class NativePackageImporterPlugin extends Plugin {
             }
             deleteRecursively(stagingRoot);
             throw error;
+        }
+    }
+
+    private void copySelectedPackage(Uri uri, File target) throws Exception {
+        ensureFreeSpace(target.getParentFile());
+        try (InputStream input = new BufferedInputStream(getContext().getContentResolver().openInputStream(uri), BUFFER_SIZE);
+             BufferedOutputStream output = new BufferedOutputStream(new FileOutputStream(target), BUFFER_SIZE)) {
+            if (input == null) throw new Exception("Não foi possível abrir o pacote selecionado.");
+            byte[] buffer = new byte[BUFFER_SIZE];
+            int read;
+            long copied = 0L;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+                copied += read;
+                if ((copied & ((16L * 1024L * 1024L) - 1L)) < BUFFER_SIZE) ensureFreeSpace(target.getParentFile());
+            }
+            if (copied <= 0L) throw new Exception("O pacote selecionado está vazio.");
+        } catch (NullPointerException error) {
+            throw new Exception("Não foi possível abrir o pacote selecionado.", error);
+        }
+    }
+
+    private ReadResult readMetadataEntry(ZipFile archive, ZipEntry entry, byte[] buffer, String name, long extractedBefore) throws Exception {
+        try (InputStream input = new BufferedInputStream(archive.getInputStream(entry), BUFFER_SIZE);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            int read;
+            long total = 0L;
+            long extracted = extractedBefore;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                extracted += read;
+                ensureExtractionLimit(extracted);
+                if (total > MAX_METADATA_BYTES) throw new Exception(name + " excede o limite seguro de metadados.");
+                out.write(buffer, 0, read);
+            }
+            String value = out.toString(StandardCharsets.UTF_8.name());
+            if (value.startsWith("\uFEFF")) value = value.substring(1);
+            if (value.trim().isEmpty()) throw new Exception(name + " está vazio no pacote.");
+            return new ReadResult(value, extracted);
+        }
+    }
+
+    private JSONObject parseJsonObject(String name, String text) throws Exception {
+        String value = cleanText(text);
+        if (value.isEmpty()) throw new Exception(name + " está vazio no pacote.");
+        try {
+            return new JSONObject(value);
+        } catch (Exception error) {
+            throw new Exception(name + " contém JSON inválido: " + error.getMessage(), error);
+        }
+    }
+
+    private static final class ReadResult {
+        final String text;
+        final long totalExtracted;
+        ReadResult(String text, long totalExtracted) {
+            this.text = text;
+            this.totalExtracted = totalExtracted;
         }
     }
 
