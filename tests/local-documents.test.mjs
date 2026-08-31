@@ -60,7 +60,9 @@ assert.match(importer,/NativePackageImporter\.importPackage\(\)/,'Android não d
 assert.match(importer,/documentRepository\.load\(\{force:true\}\)/,'catálogo deve ser recarregado após commit nativo');
 assert.match(localUx,/const nativePicker=packageImportService\.usesNativePicker\(\)/,'modal deve reconhecer seletor nativo Android');
 assert.match(localUx,/if\(!nativePicker&&!file\)/,'Android não deve exigir input HTML antes do seletor nativo');
-assert.match(nativeImporter,/ZipInputStream/,'APK deve descompactar o pacote como stream nativo');
+assert.match(nativeImporter,/copySelectedPackage\(uri, sourceZip\)/,'APK deve copiar o ZIP selecionado em streaming para staging privado');
+assert.match(nativeImporter,/new ZipFile\(sourceZip\)/,'APK deve usar o diretório central para compatibilidade com ZIPs streaming do Packager');
+assert.doesNotMatch(nativeImporter,/new ZipInputStream/,'APK não pode depender da leitura sequencial que produziu metadados vazios no pacote real');
 assert.match(nativeImporter,/BufferedOutputStream/,'PDF deve ser gravado progressivamente no armazenamento');
 assert.doesNotMatch(nativeImporter,/Base64|base64/,'importador nativo não pode converter PDFs para Base64');
 assert.doesNotMatch(nativeImporter,/byte\[\]\s+.*=.*new byte\[\(int\)/,'importador nativo não pode alocar o PDF inteiro em RAM');
@@ -68,6 +70,8 @@ assert.match(nativeImporter,/MAX_METADATA_BYTES/,'metadados devem possuir limite
 assert.match(nativeImporter,/MAX_TOTAL_UNCOMPRESSED_BYTES/,'conteúdo descompactado deve possuir teto contra ZIP bomb');
 assert.match(nativeImporter,/MIN_FREE_BYTES/,'importador deve preservar margem mínima de armazenamento');
 assert.match(nativeImporter,/seenEntries/,'ZIP deve rejeitar entradas duplicadas');
+assert.match(nativeImporter,/parseJsonObject/,'JSON vazio ou inválido deve gerar erro controlado e legível');
+assert.match(nativeImporter,/PDF vazio no pacote/,'PDF zero-byte deve ser rejeitado antes do commit');
 assert.match(nativeImporter,/normalizeEntryName/,'ZIP deve validar caminhos antes de gravar');
 assert.match(nativeImporter,/safeChild/,'destinos do ZIP devem permanecer dentro da área privada do app');
 assert.match(nativeImporter,/writeAtomically/,'catálogo só pode ser ativado de forma atômica');
