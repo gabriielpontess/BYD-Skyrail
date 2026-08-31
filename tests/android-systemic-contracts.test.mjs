@@ -39,6 +39,14 @@ assert.match(nativeImporter,/parseJsonObject\(MANIFEST, manifestText\)/,'manifes
 assert.match(nativeImporter,/parseJsonObject\(DEFAULT_CATALOG, catalogText\)/,'catálogo vazio/inválido deve produzir diagnóstico controlado');
 assert.match(nativeImporter,/PDF vazio no pacote/,'PDF zero-byte não pode ser promovido');
 
+// O Packager organiza PDFs por sistema (ex.: documents/3-e-4-trilhos/arquivo.pdf).
+// O Android deve aceitar subpastas relativas seguras sem enfraquecer a proteção contra traversal.
+assert.match(nativeImporter,/String normalized = file\.replace\('\\\\', '\/'\)/,'caminho do catálogo deve ser normalizado antes da validação');
+assert.match(nativeImporter,/String\[\] parts = normalized\.split\("\/", -1\)/,'subpastas relativas do Packager devem ser aceitas e validadas por segmento');
+assert.match(nativeImporter,/"\.\."\.equals\(part\)/,'segmentos de traversal devem continuar proibidos');
+assert.doesNotMatch(nativeImporter,/file\.contains\("\/"\) \|\| file\.contains/,'Android não pode rejeitar toda subpasta válida produzida pelo próprio Packager');
+assert.match(nativeImporter,/safeChild\(stagedDocuments, fileName\)/,'caminho relativo validado deve continuar preso ao staging privado por canonical path');
+
 // Commit transacional: nenhum pacote parcial pode substituir arquivos do catálogo ativo.
 assert.match(nativeImporter,/packageVersion \+ "__" \+ runId \+ "__" \+ fileName/,'cada importação deve usar nomes físicos exclusivos por transação');
 assert.match(nativeImporter,/promotedThisRun/,'arquivos promovidos antes do catálogo devem ser rastreados para rollback');
