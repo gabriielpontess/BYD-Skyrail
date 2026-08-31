@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const read=path=>readFile(new URL(path,import.meta.url),'utf8');
-const [catalogRepo,fileService,db,sync,importer,viewer,catalog,capacitor,netlify,localUx,localCss,packager,packagerUx,index]=await Promise.all([
+const [catalogRepo,fileService,db,sync,importer,viewer,catalog,capacitor,netlify,localUx,localCss,packager,packagerUx,index,nativeImporter,androidPatch,packageJson]=await Promise.all([
   read('../js/documents/catalog-repository.js'),
   read('../js/documents/file-service.js'),
   read('../js/db.js'),
@@ -16,7 +16,10 @@ const [catalogRepo,fileService,db,sync,importer,viewer,catalog,capacitor,netlify
   read('../local-documents.css'),
   read('../js/documents/document-packager-service.js'),
   read('../js/document-packager-ux.js'),
-  read('../index.html')
+  read('../index.html'),
+  read('../native/android/NativePackageImporterPlugin.java'),
+  read('../scripts/patch-android-native-importer.mjs'),
+  read('../package.json')
 ]);
 
 const parsed=JSON.parse(catalog);
@@ -46,8 +49,24 @@ assert.doesNotMatch(sync,/docs\.forEach\(/,'sync local não deve disparar repain
 assert.match(importer,/Pacote incompatível/);
 assert.match(importer,/Pacote incompleto/);
 assert.match(importer,/Importação interrompida sem substituir o catálogo ativo/);
-assert.match(importer,/writeChain=Promise\.resolve\(\)/,'importação grande deve aplicar backpressure nas gravações de staging');
-assert.match(importer,/await writeChain/,'importador não pode acumular PDFs completos aguardando gravação');
+assert.match(importer,/writeChain=Promise\.resolve\(\)/,'fallback web deve aplicar backpressure nas gravações de staging');
+assert.match(importer,/await writeChain/,'fallback web não pode acumular PDFs completos aguardando gravação');
+assert.match(importer,/registerPlugin\('NativePackageImporter'\)/,'Android deve usar importador nativo dedicado');
+assert.match(importer,/usesNativePicker\(\)/,'serviço deve distinguir o fluxo Android do fallback web');
+assert.match(importer,/NativePackageImporter\.importPackage\(\)/,'Android não deve encaminhar o ZIP gigante pelo bridge JS');
+assert.match(importer,/documentRepository\.load\(\{force:true\}\)/,'catálogo deve ser recarregado após commit nativo');
+assert.match(nativeImporter,/ZipInputStream/,'APK deve descompactar o pacote como stream nativo');
+assert.match(nativeImporter,/BufferedOutputStream/,'PDF deve ser gravado progressivamente no armazenamento');
+assert.doesNotMatch(nativeImporter,/Base64|base64/,'importador nativo não pode converter PDFs para Base64');
+assert.doesNotMatch(nativeImporter,/byte\[\]\s+.*=.*new byte\[\(int\)/,'importador nativo não pode alocar o PDF inteiro em RAM');
+assert.match(nativeImporter,/MAX_METADATA_BYTES/,'metadados devem possuir limite de memória explícito');
+assert.match(nativeImporter,/normalizeEntryName/,'ZIP deve validar caminhos antes de gravar');
+assert.match(nativeImporter,/safeChild/,'destinos do ZIP devem permanecer dentro da área privada do app');
+assert.match(nativeImporter,/writeAtomically/,'catálogo só pode ser ativado de forma atômica');
+assert.match(nativeImporter,/staging-native/,'importação deve possuir staging privado separado');
+assert.match(nativeImporter,/deleteRecursively\(stagingRoot\)/,'staging deve ser limpo tanto no sucesso quanto na falha');
+assert.match(androidPatch,/registerPlugin\(NativePackageImporterPlugin\.class\)/,'build Android deve registrar o plugin nativo');
+assert.match(packageJson,/"android:patch"/,'scripts do projeto devem preservar a integração nativa após cap add/sync');
 assert.doesNotMatch(packager,/unzipSync|zipSync/,'preparador de grande volume não pode materializar o ZIP inteiro em memória');
 assert.doesNotMatch(packager,/pdfZipFile\.arrayBuffer/,'ZIP bruto grande não pode ser lido inteiro por arrayBuffer');
 assert.match(packager,/readZipDirectory/,'validação deve ler o diretório central antes da geração');
