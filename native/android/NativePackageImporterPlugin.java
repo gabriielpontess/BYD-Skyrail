@@ -24,8 +24,10 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +42,8 @@ public class NativePackageImporterPlugin extends Plugin {
     private static final int MAX_SCHEMA_VERSION = 1;
     private static final int BUFFER_SIZE = 64 * 1024;
     private static final long MAX_METADATA_BYTES = 16L * 1024L * 1024L;
+    private static final long MAX_TOTAL_UNCOMPRESSED_BYTES = 20L * 1024L * 1024L * 1024L;
+    private static final long MIN_FREE_BYTES = 128L * 1024L * 1024L;
 
     @PluginMethod
     public void importPackage(PluginCall call) {
@@ -79,6 +83,8 @@ public class NativePackageImporterPlugin extends Plugin {
 
         Map<String, String> metadata = new HashMap<>();
         Set<String> staged = new HashSet<>();
+        Set<String> seenEntries = new HashSet<>();
+        List<File> promotedThisRun = new ArrayList<>();
         long extractedBytes = 0L;
         int entries = 0;
 
@@ -94,6 +100,7 @@ public class NativePackageImporterPlugin extends Plugin {
                             zip.closeEntry();
                             continue;
                         }
+                        if (!seenEntries.add(name)) throw new Exception("Pacote contém entrada duplicada: " + name);
                         entries++;
                         if (isMetadata(name)) {
                             ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -101,28 +108,35 @@ public class NativePackageImporterPlugin extends Plugin {
                             long total = 0L;
                             while ((read = zip.read(buffer)) != -1) {
                                 total += read;
+                                extractedBytes += read;
+                                ensureExtractionLimit(extractedBytes);
                                 if (total > MAX_METADATA_BYTES) throw new Exception(name + " excede o limite seguro de metadados.");
                                 out.write(buffer, 0, read);
                             }
-                            metadata.put(baseName(name), out.toString(StandardCharsets.UTF_8.name()));
-                            extractedBytes += total;
+                            String base = baseName(name);
+                            if (metadata.containsKey(base)) throw new Exception("Pacote contém metadado duplicado: " + base);
+                            metadata.put(base, out.toString(StandardCharsets.UTF_8.name()));
                         } else if (isDocumentPdf(name)) {
                             String relative = name.substring("documents/".length());
                             File target = safeChild(stagedDocuments, relative);
                             File parent = target.getParentFile();
                             if (parent != null && !parent.mkdirs() && !parent.isDirectory()) throw new Exception("Não foi possível preparar a pasta do documento.");
+                            ensureFreeSpace(stagedDocuments);
                             try (BufferedOutputStream out = new BufferedOutputStream(new FileOutputStream(target), BUFFER_SIZE)) {
                                 int read;
-                                long current = 0L;
                                 while ((read = zip.read(buffer)) != -1) {
                                     out.write(buffer, 0, read);
-                                    current += read;
+                                    extractedBytes += read;
+                                    ensureExtractionLimit(extractedBytes);
                                 }
-                                extractedBytes += current;
                             }
                             staged.add("documents/" + relative.replace('\\', '/'));
                         } else {
-                            while (zip.read(buffer) != -1) { }
+                            int read;
+                            while ((read = zip.read(buffer)) != -1) {
+                                extractedBytes += read;
+                                ensureExtractionLimit(extractedBytes);
+                            }
                         }
                         notifyProgress("extract", entries, name, 0, 0, null);
                         zip.closeEntry();
@@ -136,21 +150,25 @@ public class NativePackageImporterPlugin extends Plugin {
             String packageVersion = requiredText(manifestRaw, "packageVersion", "Manifesto sem packageVersion.");
             String catalogFile = cleanText(manifestRaw.optString("catalogFile", DEFAULT_CATALOG));
             if (catalogFile.isEmpty()) catalogFile = DEFAULT_CATALOG;
+            if (!DEFAULT_CATALOG.equals(baseName(catalogFile))) throw new Exception("Pacote incompatível: catalogFile deve apontar para documents.json na V1.");
             int schemaVersion = manifestRaw.optInt("schemaVersion", 1);
             if (schemaVersion > MAX_SCHEMA_VERSION) throw new Exception("Pacote incompatível: schemaVersion " + schemaVersion + ".");
 
-            String catalogText = metadata.get(baseName(catalogFile));
+            String catalogText = metadata.get(DEFAULT_CATALOG);
             if (catalogText == null) throw new Exception("Pacote sem " + catalogFile + ".");
             JSONObject catalog = new JSONObject(catalogText);
             JSONArray documents = catalog.optJSONArray("documents");
             if (documents == null) throw new Exception("Catálogo documents.json inválido.");
 
             validateCatalog(documents, staged);
-            JSONObject previousCatalog = readExistingCatalog(new File(new File(skyrailRoot, "catalog"), "documents.json"));
+            File catalogTarget = new File(new File(skyrailRoot, "catalog"), "documents.json");
+            JSONObject previousCatalog = readExistingCatalog(catalogTarget);
             Set<String> previousFiles = collectManagedFiles(previousCatalog);
 
             File documentsRoot = new File(skyrailRoot, "documents");
             if (!documentsRoot.mkdirs() && !documentsRoot.isDirectory()) throw new Exception("Não foi possível preparar o armazenamento documental.");
+            cleanupUnreferencedFiles(documentsRoot, previousFiles);
+            ensureFreeSpace(documentsRoot);
 
             int totalActive = countActive(documents);
             int done = 0;
@@ -162,12 +180,13 @@ public class NativePackageImporterPlugin extends Plugin {
                 String fileName = documentFileName(doc);
                 File source = safeChild(stagedDocuments, fileName);
                 if (!source.isFile()) throw new Exception("Arquivo ausente durante commit: " + fileName);
-                String finalName = safePart(packageVersion + "__" + fileName);
+                String finalName = safePart(packageVersion + "__" + runId + "__" + fileName);
                 File documentDir = safeChild(documentsRoot, safePart(id));
                 if (!documentDir.mkdirs() && !documentDir.isDirectory()) throw new Exception("Não foi possível criar a pasta do documento " + code + ".");
                 File destination = safeChild(documentDir, finalName);
                 moveFile(source, destination);
-                doc.put("file_path", packageVersion + "__" + fileName);
+                promotedThisRun.add(destination);
+                doc.put("file_path", finalName);
                 doc.put("file", fileName);
                 doc.put("package_version", packageVersion);
                 done++;
@@ -179,12 +198,11 @@ public class NativePackageImporterPlugin extends Plugin {
             if (!catalog.has("generatedAt") || cleanText(catalog.optString("generatedAt", "")).isEmpty()) catalog.put("generatedAt", manifestRaw.optString("createdAt", ""));
             catalog.put("packageVersion", packageVersion);
 
-            File catalogDir = new File(skyrailRoot, "catalog");
-            if (!catalogDir.mkdirs() && !catalogDir.isDirectory()) throw new Exception("Não foi possível preparar o catálogo local.");
-            File catalogTarget = new File(catalogDir, "documents.json");
+            File catalogDir = catalogTarget.getParentFile();
+            if (catalogDir != null && !catalogDir.mkdirs() && !catalogDir.isDirectory()) throw new Exception("Não foi possível preparar o catálogo local.");
             writeAtomically(catalogTarget, catalog.toString());
 
-            cleanupOldManagedFiles(documentsRoot, previousFiles, collectManagedFiles(catalog));
+            cleanupUnreferencedFiles(documentsRoot, collectManagedFiles(catalog));
             deleteRecursively(stagingRoot);
 
             JSObject result = new JSObject();
@@ -195,6 +213,9 @@ public class NativePackageImporterPlugin extends Plugin {
             result.put("contentBytes", extractedBytes);
             return result;
         } catch (Exception error) {
+            for (File file : promotedThisRun) {
+                try { if (file != null && file.isFile()) file.delete(); } catch (Exception ignored) { }
+            }
             deleteRecursively(stagingRoot);
             throw error;
         }
@@ -245,13 +266,25 @@ public class NativePackageImporterPlugin extends Plugin {
         return files;
     }
 
-    private void cleanupOldManagedFiles(File documentsRoot, Set<String> previousFiles, Set<String> currentFiles) {
-        for (String relative : previousFiles) {
-            if (currentFiles.contains(relative)) continue;
-            try {
-                File old = safeChild(documentsRoot, relative);
-                if (old.isFile()) old.delete();
-            } catch (Exception ignored) { }
+    private void cleanupUnreferencedFiles(File documentsRoot, Set<String> keep) {
+        if (documentsRoot == null || !documentsRoot.isDirectory()) return;
+        File[] dirs = documentsRoot.listFiles();
+        if (dirs == null) return;
+        for (File dir : dirs) {
+            if (!dir.isDirectory()) {
+                dir.delete();
+                continue;
+            }
+            File[] files = dir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    String relative = dir.getName() + "/" + file.getName();
+                    if (file.isFile() && !keep.contains(relative)) file.delete();
+                    else if (file.isDirectory()) deleteRecursively(file);
+                }
+            }
+            File[] remaining = dir.listFiles();
+            if (remaining == null || remaining.length == 0) dir.delete();
         }
     }
 
@@ -325,6 +358,15 @@ public class NativePackageImporterPlugin extends Plugin {
         return target;
     }
 
+    private void ensureExtractionLimit(long bytes) throws Exception {
+        if (bytes > MAX_TOTAL_UNCOMPRESSED_BYTES) throw new Exception("Pacote excede o limite seguro de conteúdo descompactado.");
+    }
+
+    private void ensureFreeSpace(File root) throws Exception {
+        long usable = root.getUsableSpace();
+        if (usable > 0 && usable < MIN_FREE_BYTES) throw new Exception("Não há espaço livre suficiente para concluir a atualização.");
+    }
+
     private void moveFile(File source, File destination) throws Exception {
         File temp = new File(destination.getParentFile(), destination.getName() + ".tmp");
         if (temp.exists() && !temp.delete()) throw new Exception("Não foi possível substituir arquivo temporário.");
@@ -381,7 +423,7 @@ public class NativePackageImporterPlugin extends Plugin {
     private String userMessage(Exception error) {
         String message = error.getMessage() == null ? error.toString() : error.getMessage();
         String lower = message.toLowerCase(Locale.ROOT);
-        if (lower.contains("enospc") || lower.contains("no space") || lower.contains("space left")) return "Não há espaço suficiente para concluir a atualização.";
+        if (lower.contains("enospc") || lower.contains("no space") || lower.contains("space left") || lower.contains("espaço livre")) return "Não há espaço suficiente para concluir a atualização.";
         return "Importação interrompida sem substituir o catálogo ativo: " + message;
     }
 
