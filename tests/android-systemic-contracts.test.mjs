@@ -46,6 +46,11 @@ assert.match(nativeImporter,/String\[\] parts = normalized\.split\("\/", -1\)/,'
 assert.match(nativeImporter,/"\.\."\.equals\(part\)/,'segmentos de traversal devem continuar proibidos');
 assert.doesNotMatch(nativeImporter,/file\.contains\("\/"\) \|\| file\.contains/,'Android não pode rejeitar toda subpasta válida produzida pelo próprio Packager');
 assert.match(nativeImporter,/safeChild\(stagedDocuments, fileName\)/,'caminho relativo validado deve continuar preso ao staging privado por canonical path');
+const physicalNestedFixture='3-e-4-trilhos/DE-17.00.00.00-6P5-1301-0.pdf';
+const segments=physicalNestedFixture.replace(/\\/g,'/').split('/');
+assert.deepEqual(segments,['3-e-4-trilhos','DE-17.00.00.00-6P5-1301-0.pdf'],'fixture físico deve preservar subpasta de sistema + PDF');
+assert.ok(segments.every(part=>part&&part!=='.'&&part!=='..'),'fixture físico observado no tablet deve ser classificado como caminho relativo seguro');
+assert.ok(physicalNestedFixture.toLowerCase().endsWith('.pdf'));
 
 // Commit transacional: nenhum pacote parcial pode substituir arquivos do catálogo ativo.
 assert.match(nativeImporter,/packageVersion \+ "__" \+ runId \+ "__" \+ fileName/,'cada importação deve usar nomes físicos exclusivos por transação');
