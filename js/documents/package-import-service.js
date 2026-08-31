@@ -1,3 +1,4 @@
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { strFromU8, Unzip, UnzipInflate } from 'fflate';
 import { documentRepository } from './catalog-repository.js';
 import { documentFileService } from './file-service.js';
@@ -7,6 +8,7 @@ import { notificationService } from './notification-service.js';
 const MANIFEST='manifest.json';
 const DEFAULT_CATALOG='documents.json';
 const MAX_SCHEMA_VERSION=1;
+const NativePackageImporter=registerPlugin('NativePackageImporter');
 
 function concat(chunks,total){const out=new Uint8Array(total);let offset=0;for(const chunk of chunks){out.set(chunk,offset);offset+=chunk.length}return out}
 function parseJson(text,label){try{return JSON.parse(text)}catch{throw new Error(`${label} contém JSON inválido.`)}}
@@ -77,7 +79,25 @@ async function unzipToStaging(file,runId,onProgress){
   }
 }
 
+async function importNative(onProgress){
+  const previousDocuments=await documentRepository.getAll({includeInactive:true});
+  let listener=null;
+  try{
+    if(onProgress)listener=await NativePackageImporter.addListener('progress',event=>onProgress(event));
+    await NativePackageImporter.importPackage();
+    await documentRepository.load({force:true});
+    const currentDocuments=await documentRepository.getAll({includeInactive:true});
+    const info=await documentRepository.info();
+    try{notificationService.recordPackage(previousDocuments,currentDocuments,{packageVersion:info.packageVersion,createdAt:info.generatedAt})}catch(error){console.warn('[BYD Skyrail] Não foi possível registrar notificações locais:',error)}
+    return info;
+  }finally{
+    try{await listener?.remove()}catch{}
+  }
+}
+
 export class PackageImportService{
+  usesNativePicker(){return Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='android'}
+
   async inspect(file,onProgress){
     const runId=crypto.randomUUID();
     const extracted=await unzipToStaging(file,runId,onProgress);
@@ -125,7 +145,11 @@ export class PackageImportService{
     }
   }
 
-  async import(file,onProgress){const plan=await this.inspect(file,onProgress);return this.commit(plan,onProgress)}
+  async import(file,onProgress){
+    if(this.usesNativePicker())return importNative(onProgress);
+    const plan=await this.inspect(file,onProgress);
+    return this.commit(plan,onProgress);
+  }
 }
 
 export const packageImportService=new PackageImportService();
