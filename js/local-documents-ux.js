@@ -57,23 +57,25 @@ async function showCatalogSummary(){
 
 function importModal(){
   let modal=$('#local-import-modal');if(modal)return modal;
+  const nativePicker=packageImportService.usesNativePicker();
   modal=document.createElement('div');modal.id='local-import-modal';modal.className='modal-backdrop hidden';
-  modal.innerHTML=`<section class="modal local-import-dialog" role="dialog" aria-modal="true" aria-labelledby="local-import-title"><header class="modal-head"><div class="modal-head-copy"><strong id="local-import-title">Importar atualização documental</strong><small>Pacote local .zip via USB ou armazenamento do dispositivo</small></div><button class="btn btn-outline" data-import-close type="button">Fechar</button></header><div class="local-import-body"><p>O pacote deve conter <code>manifest.json</code>, <code>documents.json</code> e a pasta <code>documents/</code>.</p><label class="field"><span>Pacote documental (.zip)</span><input type="file" accept=".zip,application/zip" data-import-file></label><div class="local-import-status" data-import-status aria-live="polite">Selecione um pacote para iniciar.</div><button class="btn btn-primary" data-import-start type="button">Validar e importar</button></div></section>`;
+  modal.innerHTML=`<section class="modal local-import-dialog" role="dialog" aria-modal="true" aria-labelledby="local-import-title"><header class="modal-head"><div class="modal-head-copy"><strong id="local-import-title">Importar atualização documental</strong><small>Pacote local .zip via USB ou armazenamento do dispositivo</small></div><button class="btn btn-outline" data-import-close type="button">Fechar</button></header><div class="local-import-body"><p>O pacote deve conter <code>manifest.json</code>, <code>documents.json</code> e a pasta <code>documents/</code>.</p>${nativePicker?'':`<label class="field"><span>Pacote documental (.zip)</span><input type="file" accept=".zip,application/zip" data-import-file></label>`}<div class="local-import-status" data-import-status aria-live="polite">${nativePicker?'Toque no botão abaixo para selecionar o pacote no armazenamento do tablet.':'Selecione um pacote para iniciar.'}</div><button class="btn btn-primary" data-import-start type="button">${nativePicker?'Selecionar pacote e importar':'Validar e importar'}</button></div></section>`;
   document.body.append(modal);
   const closeButton=modal.querySelector('[data-import-close]'),fileInput=modal.querySelector('[data-import-file]'),startButton=modal.querySelector('[data-import-start]');
+  const idleLabel=nativePicker?'Selecionar pacote e importar':'Validar e importar';
   let running=false;
-  const setRunning=value=>{running=value;modal.dataset.operationRunning=value?'1':'0';closeButton.disabled=value;fileInput.disabled=value;startButton.disabled=value;startButton.classList.toggle('is-loading',value);startButton.setAttribute('aria-busy',String(value))};
+  const setRunning=value=>{running=value;modal.dataset.operationRunning=value?'1':'0';closeButton.disabled=value;if(fileInput)fileInput.disabled=value;startButton.disabled=value;startButton.classList.toggle('is-loading',value);startButton.setAttribute('aria-busy',String(value))};
   const close=()=>{if(!running)modal.classList.add('hidden')};
   closeButton.onclick=close;
   modal.addEventListener('click',event=>{if(event.target===modal)close()});
   startButton.onclick=async()=>{
-    const file=fileInput.files?.[0],status=modal.querySelector('[data-import-status]');status.classList.remove('error','success');
+    const file=nativePicker?null:fileInput?.files?.[0],status=modal.querySelector('[data-import-status]');status.classList.remove('error','success');
     if(!canImport()){status.textContent='Sua sessão não possui permissão para importar nesta área.';status.classList.add('error');return}
-    if(!file){status.textContent='Selecione um arquivo .zip antes de iniciar.';status.classList.add('error');return}
-    setRunning(true);startButton.textContent='Importando';
-    try{const info=await packageImportService.import(file,progress=>{status.textContent=progress.phase==='extract'?`Validando ${progress.name||'arquivo'}…`:`Importando ${progress.done}/${progress.total}${progress.code?` · ${progress.code}`:''}`});localStorage.setItem('byd-skyrail-last-sync',info.generatedAt||new Date().toISOString());status.textContent=`Importação concluída: ${info.documentCount} documento(s), catálogo ${info.catalogVersion}.`;status.classList.add('success');setTimeout(()=>location.reload(),1000)}
+    if(!nativePicker&&!file){status.textContent='Selecione um arquivo .zip antes de iniciar.';status.classList.add('error');return}
+    setRunning(true);startButton.textContent=nativePicker?'Selecionando…':'Importando';
+    try{const info=await packageImportService.import(file,progress=>{startButton.textContent='Importando';status.textContent=progress.phase==='extract'?`Validando ${progress.name||'arquivo'}…`:`Importando ${progress.done}/${progress.total}${progress.code?` · ${progress.code}`:''}`});localStorage.setItem('byd-skyrail-last-sync',info.generatedAt||new Date().toISOString());status.textContent=`Importação concluída: ${info.documentCount} documento(s), catálogo ${info.catalogVersion}.`;status.classList.add('success');setTimeout(()=>location.reload(),1000)}
     catch(error){console.error('[BYD Skyrail] Importação local falhou:',error);status.textContent=error?.message||'Não foi possível importar o pacote. Verifique o arquivo e tente novamente.';status.classList.add('error')}
-    finally{setRunning(false);startButton.textContent='Validar e importar'}
+    finally{setRunning(false);startButton.textContent=idleLabel}
   };
   return modal;
 }
