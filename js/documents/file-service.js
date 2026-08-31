@@ -33,9 +33,6 @@ export class DocumentFileService {
     if(this.isNative()){
       try{await Filesystem.stat({path:this.pathFor(document),directory:Directory.Data});return true}catch{return false}
     }
-    // Existence checks must never deserialize the stored PDF Blob. IndexedDB get()
-    // returns the entire row (including potentially very large technical drawings),
-    // which caused the web preview to freeze when checking many documents at boot.
     return !!(await webTx('readonly',store=>new Promise((resolve,reject)=>{
       const r=store.getKey(document.id);
       r.onsuccess=()=>resolve(r.result);
@@ -68,6 +65,17 @@ export class DocumentFileService {
     }
     const blob=new Blob([bytes],{type:'application/pdf'});
     await webTx('readwrite',store=>new Promise((resolve,reject)=>{const r=store.put({id:document.id,blob,file_path:document.file_path || document.file});r.onsuccess=()=>resolve();r.onerror=()=>reject(r.error)}));
+  }
+
+  async getViewerSource(document){
+    if(this.isNative()){
+      try{
+        const result=await Filesystem.getUri({path:this.pathFor(document),directory:Directory.Data});
+        return {url:Capacitor.convertFileSrc(result.uri),blob:null};
+      }catch{return null}
+    }
+    const blob=await this.getBlob(document);
+    return blob?{url:null,blob}:null;
   }
 
   async getBlob(document){
