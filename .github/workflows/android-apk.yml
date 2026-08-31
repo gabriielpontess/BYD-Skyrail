@@ -21,8 +21,10 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm test
       - run: npm run build
-      - run: npx cap add android
+      - run: npm run test:browser
+      - run: npm run android:add
       - run: npx cap sync android
+      - run: npm run android:patch
       - run: cd android && ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
         with:
