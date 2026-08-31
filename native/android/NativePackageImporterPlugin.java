@@ -26,7 +26,6 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Iterator;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -72,7 +71,9 @@ public class NativePackageImporterPlugin extends Plugin {
         String runId = UUID.randomUUID().toString();
         File filesRoot = getContext().getFilesDir();
         File skyrailRoot = new File(filesRoot, "skyrail");
-        File stagingRoot = new File(new File(skyrailRoot, "staging-native"), runId);
+        File nativeStagingRoot = new File(skyrailRoot, "staging-native");
+        deleteRecursively(nativeStagingRoot);
+        File stagingRoot = new File(nativeStagingRoot, runId);
         File stagedDocuments = new File(stagingRoot, "documents");
         if (!stagedDocuments.mkdirs() && !stagedDocuments.isDirectory()) throw new Exception("Não foi possível preparar a área temporária de importação.");
 
@@ -121,7 +122,7 @@ public class NativePackageImporterPlugin extends Plugin {
                             }
                             staged.add("documents/" + relative.replace('\\', '/'));
                         } else {
-                            while (zip.read(buffer) != -1) { /* discard unsupported entry without materializing it */ }
+                            while (zip.read(buffer) != -1) { }
                         }
                         notifyProgress("extract", entries, name, 0, 0, null);
                         zip.closeEntry();
@@ -268,14 +269,14 @@ public class NativePackageImporterPlugin extends Plugin {
 
     private String documentFileName(JSONObject doc) throws Exception {
         String file = cleanText(doc.optString("file", doc.optString("file_path", "")));
-        if (file.isEmpty()) throw new Exception("Há documento com campos obrigatórios ausentes no catálogo.");
+        if (file.isEmpty() || "null".equalsIgnoreCase(file)) throw new Exception("Há documento com campos obrigatórios ausentes no catálogo.");
         if (file.contains("/") || file.contains("\\") || file.equals(".") || file.equals("..")) throw new Exception("Caminho de PDF inválido no catálogo: " + file);
         return file;
     }
 
     private String requiredDocText(JSONObject doc, String key) throws Exception {
         String value = cleanText(doc.optString(key, ""));
-        if (value.isEmpty()) throw new Exception("Há documento com campos obrigatórios ausentes no catálogo.");
+        if (value.isEmpty() || "null".equalsIgnoreCase(value)) throw new Exception("Há documento com campos obrigatórios ausentes no catálogo.");
         return value;
     }
 
