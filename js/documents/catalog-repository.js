@@ -11,6 +11,16 @@ const text = value => String(value ?? '').trim();
 const fold = value => text(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('pt-BR').replace(/\s+/g, ' ');
 const normalizeCode = value => fold(value).replace(/[^a-z0-9]/g, '');
 
+function isMissingNativeFileError(error) {
+  const message = String(error?.message || error || '').toLowerCase();
+  const code = String(error?.code || '').toUpperCase();
+  return code === 'ENOENT'
+    || message.includes('enoent')
+    || message.includes('not found')
+    || message.includes('does not exist')
+    || message.includes('no such file');
+}
+
 function normalizeCatalog(input) {
   if (!input || typeof input !== 'object' || !Array.isArray(input.documents)) throw new Error('Catálogo documental inválido.');
   const systems = Array.isArray(input.systems) ? input.systems.map(item => ({
@@ -43,7 +53,7 @@ async function readNative() {
     const result = await Filesystem.readFile({ path: NATIVE_PATH, directory: Directory.Data, encoding: Encoding.UTF8 });
     return normalizeCatalog(JSON.parse(String(result.data)));
   } catch (error) {
-    if (String(error?.message || '').toLowerCase().includes('not found')) return null;
+    if (isMissingNativeFileError(error)) return null;
     throw error;
   }
 }
