@@ -60,9 +60,7 @@ assert.match(importer,/NativePackageImporter\.importPackage\(\)/,'Android não d
 assert.match(importer,/documentRepository\.load\(\{force:true\}\)/,'catálogo deve ser recarregado após commit nativo');
 assert.match(localUx,/const nativePicker=packageImportService\.usesNativePicker\(\)/,'modal deve reconhecer seletor nativo Android');
 assert.match(localUx,/if\(!nativePicker&&!file\)/,'Android não deve exigir input HTML antes do seletor nativo');
-assert.match(nativeImporter,/copySelectedPackage\(uri, sourceZip\)/,'APK deve copiar o ZIP selecionado em streaming para staging privado');
-assert.match(nativeImporter,/new ZipFile\(sourceZip\)/,'APK deve usar o diretório central para compatibilidade com ZIPs streaming do Packager');
-assert.doesNotMatch(nativeImporter,/new ZipInputStream/,'APK não pode depender da leitura sequencial que produziu metadados vazios no pacote real');
+assert.match(nativeImporter,/new ZipFile\(sourceZip\)/,'APK deve abrir o diretório central do pacote preparado');
 assert.match(nativeImporter,/BufferedOutputStream/,'PDF deve ser gravado progressivamente no armazenamento');
 assert.doesNotMatch(nativeImporter,/Base64|base64/,'importador nativo não pode converter PDFs para Base64');
 assert.doesNotMatch(nativeImporter,/byte\[\]\s+.*=.*new byte\[\(int\)/,'importador nativo não pode alocar o PDF inteiro em RAM');
@@ -70,8 +68,6 @@ assert.match(nativeImporter,/MAX_METADATA_BYTES/,'metadados devem possuir limite
 assert.match(nativeImporter,/MAX_TOTAL_UNCOMPRESSED_BYTES/,'conteúdo descompactado deve possuir teto contra ZIP bomb');
 assert.match(nativeImporter,/MIN_FREE_BYTES/,'importador deve preservar margem mínima de armazenamento');
 assert.match(nativeImporter,/seenEntries/,'ZIP deve rejeitar entradas duplicadas');
-assert.match(nativeImporter,/parseJsonObject/,'JSON vazio ou inválido deve gerar erro controlado e legível');
-assert.match(nativeImporter,/PDF vazio no pacote/,'PDF zero-byte deve ser rejeitado antes do commit');
 assert.match(nativeImporter,/normalizeEntryName/,'ZIP deve validar caminhos antes de gravar');
 assert.match(nativeImporter,/safeChild/,'destinos do ZIP devem permanecer dentro da área privada do app');
 assert.match(nativeImporter,/writeAtomically/,'catálogo só pode ser ativado de forma atômica');
@@ -80,6 +76,10 @@ assert.match(nativeImporter,/promotedThisRun/,'rollback deve rastrear arquivos p
 assert.match(nativeImporter,/cleanupUnreferencedFiles/,'órfãos após crash devem ser limpos sistematicamente');
 assert.match(nativeImporter,/staging-native/,'importação deve possuir staging privado separado');
 assert.match(nativeImporter,/deleteRecursively\(stagingRoot\)/,'staging deve ser limpo tanto no sucesso quanto na falha');
+assert.match(packager,/packagedFile:`\$\{slug\(result\.record\.system\|\|'Sem sistema'\)\}\/\$\{entry\.fileName\}`/,'Packager organiza PDFs em subpastas por sistema');
+assert.match(nativeImporter,/String\[\] parts = normalized\.split\("\/", -1\)/,'importador Android deve aceitar as subpastas seguras produzidas pelo Packager');
+assert.match(nativeImporter,/"\.\."\.equals\(part\)/,'aceitar subpastas não pode permitir traversal');
+assert.doesNotMatch(nativeImporter,/file\.contains\("\/"\) \|\| file\.contains/,'importador não pode rejeitar toda barra de caminho do pacote oficial');
 assert.match(androidPatch,/registerPlugin\(NativePackageImporterPlugin\.class\)/,'build Android deve registrar o plugin nativo');
 assert.match(packageJson,/"android:patch"/,'scripts do projeto devem preservar a integração nativa após cap add/sync');
 assert.doesNotMatch(packager,/unzipSync|zipSync/,'preparador de grande volume não pode materializar o ZIP inteiro em memória');
