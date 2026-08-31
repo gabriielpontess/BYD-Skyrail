@@ -27,12 +27,17 @@ assert.match(importer,/NativePackageImporter\.importPackage\(\)/);
 assert.match(localUx,/const nativePicker=packageImportService\.usesNativePicker\(\)/,'UI deve saber quando o Android possui seletor nativo');
 assert.match(localUx,/if\(!nativePicker&&!file\)/,'Android não pode exigir seleção no input HTML antes de abrir o seletor nativo');
 assert.match(localUx,/nativePicker\?null:fileInput/,'Android não deve passar File gigante pelo bridge');
-assert.match(nativeImporter,/ZipInputStream/,'ZIP Android deve ser lido progressivamente');
+assert.match(nativeImporter,/copySelectedPackage\(uri, sourceZip\)/,'URI selecionada deve ser copiada em streaming para arquivo privado temporário');
+assert.match(nativeImporter,/new ZipFile\(sourceZip\)/,'Android deve consultar o diretório central do ZIP preparado antes de ler entradas');
+assert.doesNotMatch(nativeImporter,/new ZipInputStream/,'APK não deve depender de leitura sequencial incompatível com entradas streaming do packager');
 assert.doesNotMatch(nativeImporter,/Base64|base64/,'importador nativo não deve duplicar PDFs em Base64');
 assert.match(nativeImporter,/BUFFER_SIZE = 64 \* 1024/,'buffer nativo deve permanecer limitado');
 assert.match(nativeImporter,/MAX_TOTAL_UNCOMPRESSED_BYTES/,'ZIP bomb deve possuir teto explícito');
 assert.match(nativeImporter,/seenEntries/,'entradas ZIP duplicadas devem ser detectadas');
 assert.match(nativeImporter,/MIN_FREE_BYTES/,'importação deve proteger margem mínima de armazenamento');
+assert.match(nativeImporter,/parseJsonObject\(MANIFEST, manifestText\)/,'manifesto vazio/inválido deve produzir diagnóstico controlado');
+assert.match(nativeImporter,/parseJsonObject\(DEFAULT_CATALOG, catalogText\)/,'catálogo vazio/inválido deve produzir diagnóstico controlado');
+assert.match(nativeImporter,/PDF vazio no pacote/,'PDF zero-byte não pode ser promovido');
 
 // Commit transacional: nenhum pacote parcial pode substituir arquivos do catálogo ativo.
 assert.match(nativeImporter,/packageVersion \+ "__" \+ runId \+ "__" \+ fileName/,'cada importação deve usar nomes físicos exclusivos por transação');
