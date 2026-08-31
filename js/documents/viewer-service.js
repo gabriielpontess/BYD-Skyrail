@@ -29,10 +29,12 @@ export class DocumentViewerService{
     const opener=document.activeElement instanceof HTMLElement?document.activeElement:null;
     const doc=await documentRepository.getById(id);
     if(!doc)throw new Error('Documento não encontrado no catálogo local.');
-    const blob=await documentFileService.getBlob(doc);
-    if(!blob)throw new Error('PDF não encontrado no armazenamento local. Importe o pacote documental correspondente.');
-    const bytes=new Uint8Array(await blob.arrayBuffer());
-    const pdf=await getDocument({data:bytes}).promise;
+    const source=await documentFileService.getViewerSource(doc);
+    if(!source)throw new Error('PDF não encontrado no armazenamento local. Importe o pacote documental correspondente.');
+    let blob=source.blob||null;
+    const pdf=source.url
+      ?await getDocument({url:source.url}).promise
+      :await getDocument({data:new Uint8Array(await blob.arrayBuffer())}).promise;
     let pageNumber=1,scale=1,renderTask=null,renderSerial=0,closed=false,fitMode=true,resizeTimer=null,firstFrameReady=false;
     const pointers=new Map();
     let dragStart=null,pinchStart=null;
@@ -150,7 +152,9 @@ export class DocumentViewerService{
       if(fitMode)await fit();
       else await render();
     };
-    const download=()=>{
+    const download=async()=>{
+      if(!blob)blob=await documentFileService.getBlob(doc);
+      if(!blob)throw new Error('PDF não encontrado no armazenamento local.');
       const url=URL.createObjectURL(blob);
       const anchor=document.createElement('a');
       anchor.href=url;
@@ -253,7 +257,7 @@ export class DocumentViewerService{
     },{passive:false});
 
     backdrop.querySelector('[data-pdf-close]').addEventListener('click',event=>{event.preventDefault();event.stopPropagation();close()});
-    backdrop.querySelector('[data-pdf-download]').addEventListener('click',event=>{event.preventDefault();download()});
+    backdrop.querySelector('[data-pdf-download]').addEventListener('click',async event=>{event.preventDefault();try{await download()}catch(error){console.error('[BYD Skyrail] Falha ao baixar PDF local:',error);alert(error?.message||'Não foi possível baixar o PDF.')}});
     backdrop.querySelector('[data-pdf-prev]').onclick=()=>goToPage(pageNumber-1);
     backdrop.querySelector('[data-pdf-next]').onclick=()=>goToPage(pageNumber+1);
     backdrop.querySelector('[data-pdf-fit]').onclick=()=>fit();
