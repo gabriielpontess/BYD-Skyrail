@@ -1,0 +1,76 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const [guard,index]=await Promise.all([
+  readFile(new URL('../js/systemic-ux-guard.js',import.meta.url),'utf8'),
+  readFile(new URL('../index.html',import.meta.url),'utf8')
+]);
+
+assert.match(index,/systemic-ux-guard\.js/,'bootstrap deve carregar a proteção sistêmica por último');
+assert.ok(index.indexOf('ui-refinement.js')<index.indexOf('systemic-ux-guard.js'),'guard sistêmico deve executar após refinamentos legados');
+assert.match(guard,/documentViewerService/,'guard sistêmico deve proteger também a abertura do viewer');
+assert.match(guard,/const originalViewerOpen=/,'viewer deve preservar a operação original sob single-flight');
+assert.match(guard,/let viewerOpening=false/,'abertura de PDF deve ter trava enquanto o carregamento está pendente');
+assert.match(guard,/viewerOpening\|\|active/,'nova abertura deve ser recusada enquanto carrega ou existe viewer ativo');
+assert.match(guard,/\.local-pdf-backdrop/,'trava deve permanecer enquanto o PDF estiver visualmente aberto');
+assert.match(guard,/finally\{viewerOpening=false\}/,'falha ou conclusão do carregamento deve liberar a trava pendente');
+assert.match(guard,/function repairStaleRouteSurface/,'resposta assíncrona atrasada deve possuir reparo de rota');
+assert.match(guard,/staleAudit/,'Auditoria não pode sobrescrever uma rota atual após await antigo');
+assert.match(guard,/staleController/,'Controller não pode permanecer renderizado depois de troca de rota');
+assert.match(guard,/staleDocuments/,'Documentos não pode sobrescrever Home ou Perfil após await antigo');
+assert.match(guard,/\.local-document-search-panel,\[data-local-layout\]/,'reparo deve reconhecer as superfícies locais de Documentos');
+assert.match(guard,/new HashChangeEvent\('hashchange'\)/,'reparo deve reutilizar o caminho canônico de renderização');
+assert.match(guard,/function modalRouteAllowed/,'modais assíncronos restritos devem validar a rota no momento em que chegam ao DOM');
+assert.match(guard,/#document-admin-form,#user-admin-form/,'editores administrativos atrasados devem ser reconhecidos');
+assert.match(guard,/\^Histórico\\s\*·/,'histórico administrativo atrasado deve ser reconhecido');
+assert.match(guard,/function wrapPageForms/,'formulários assíncronos fora de modal devem receber single-flight');
+assert.match(guard,/systemicPageAsyncGuard/,'formulário de página deve ser envelopado apenas uma vez');
+assert.match(guard,/form\.dataset\.operationRunning==='1'/,'Enter/requestSubmit concorrente deve ser recusado');
+assert.match(guard,/form\.setAttribute\('aria-busy','true'\)/,'formulário em operação deve expor estado ocupado');
+assert.match(guard,/NON_MODAL_ASYNC_ACTIONS/,'ações assíncronas não modais devem ter família explícita');
+assert.match(guard,/data-home-action=\\?"sync/,'Sincronização rápida da Home deve passar pelo guard');
+assert.match(guard,/\[data-sync\]/,'todo botão convencional de sincronização deve passar pelo guard');
+assert.match(guard,/\[data-refresh\]/,'Atualizar Auditoria deve passar pelo guard');
+assert.match(guard,/function wrapPageAsyncActions/,'onclick assíncrono deve receber trava pelo tempo real da Promise');
+assert.match(guard,/button\.disabled=true/,'ação concorrente deve ser desabilitada durante execução');
+assert.match(guard,/await original\.call\(this,event\)/,'trava deve acompanhar a Promise original, sem timeout arbitrário');
+assert.match(guard,/import \{ syncAll \} from '\.\/sync\.js'/,'guard deve reutilizar o sincronizador local-first existente');
+assert.match(guard,/function runOfflineLocalSync/,'sincronização manual offline deve possuir caminho local explícito');
+assert.match(guard,/isLocalSync&&!navigator\.onLine/,'somente ações de sync devem desviar para o catálogo local quando offline');
+assert.match(guard,/Catálogo local verificado/,'feedback offline não pode afirmar falta de internet para uma operação local');
+assert.match(guard,/function guardAvatarInput/,'avatar deve usar tratamento sistêmico contra conclusão obsoleta');
+assert.match(guard,/systemicAvatarGuard/,'input de avatar deve ser assumido uma única vez pelo guard');
+assert.match(guard,/const generation=\+\+avatarGeneration/,'cada processamento de avatar deve possuir geração própria');
+assert.match(guard,/generation!==avatarGeneration/,'resultado de avatar obsoleto deve ser descartado');
+assert.match(guard,/cachedMember\(\)\?\.user_id===userId&&routeName\(\)==='profile'/,'avatar só pode atualizar UI do mesmo usuário ainda no Perfil');
+assert.match(guard,/byd-skyrail:avatar:\$\{userId\}/,'persistência do avatar deve permanecer isolada por usuário');
+assert.match(guard,/addEventListener\('hashchange',\(\)=>\{avatarGeneration\+\+/,'troca de rota deve invalidar processamento de avatar pendente');
+assert.match(guard,/CRITICAL_PAGE_FORMS=':is\(#profile-form,#password-form\)\[data-operation-running="1"\]'/,'somente formulário crítico realmente ocupado deve bloquear logout');
+assert.match(guard,/function criticalOperationRunning/,'estado crítico deve ser calculado centralmente');
+assert.match(guard,/\[data-refresh\]\[data-operation-running="1"\]/,'refresh administrativo ocupado deve bloquear troca de sessão');
+assert.match(guard,/visibleModals\(\)\.some\(modal=>modalBusy\(modal\)\)/,'operação modal ocupada deve bloquear troca de sessão');
+assert.match(guard,/function guardLogout/,'logout deve possuir guard sistêmico');
+assert.match(guard,/event\.target\.closest\?\.\('\[data-logout\]'\)/,'guard deve agir somente sobre logout');
+assert.match(guard,/Aguarde a operação em andamento terminar antes de sair/,'usuário deve receber feedback ao tentar sair durante gravação');
+assert.match(guard,/document\.addEventListener\('click',guardLogout,true\)/,'logout deve ser interceptado antes do handler legado');
+assert.match(guard,/app\.inert=Boolean\(top\)/,'modal aberto deve retirar o aplicativo de fundo da navegação por foco');
+assert.match(guard,/backdrop\.inert=!isTop/,'somente o modal superior pode receber interação');
+assert.match(guard,/event\.key!=='Tab'/,'guard deve conter navegação Tab');
+assert.match(guard,/event\.shiftKey/,'Shift+Tab também deve ser contido');
+assert.match(guard,/state\.opener/,'origem de foco deve ser registrada');
+assert.match(guard,/opener\.focus/,'foco deve voltar ao elemento que abriu a janela');
+assert.match(guard,/aria-modal/,'diálogos devem anunciar comportamento modal');
+assert.match(guard,/aria-label/,'modal legado sem título acessível deve receber nome');
+assert.match(guard,/attributeFilter:\['class','hidden'\]/,'modal persistente deve reagir quando hidden/class mudar');
+assert.match(guard,/function wrapAsyncForms/,'formulários assíncronos dentro de modal devem compartilhar o mesmo bloqueio');
+assert.match(guard,/dataset\.operationRunning='1'/,'envio assíncrono deve marcar modal como ocupado');
+assert.match(guard,/CLOSE_SELECTOR/,'todas as famílias de botão Fechar devem passar pelo mesmo guard');
+assert.match(guard,/stopImmediatePropagation/,'fechamento durante operação deve ser interrompido antes do handler legado');
+assert.match(guard,/route==='audit'.*role==='ADMIN'/s,'Auditoria deve exigir ADMIN');
+assert.match(guard,/route==='controller-updates'.*role==='CONTROLLER'/s,'Atualizações deve exigir CONTROLLER');
+assert.match(guard,/\[data-document-packager\]/,'Packager deve ser removido fora da combinação ADMIN + Auditoria');
+assert.match(guard,/\[data-local-import\]/,'Importação deve ser removida de rotas incompatíveis com a role');
+assert.match(guard,/location\.hash='#\/home'/,'rota autenticada inválida deve ser normalizada para Home');
+assert.doesNotMatch(guard,/observe\(document\.body,\{[^}]*subtree:true/,'guard não deve observar toda a subárvore do body');
+
+console.log('systemic-ux-guard.test.mjs: ok');

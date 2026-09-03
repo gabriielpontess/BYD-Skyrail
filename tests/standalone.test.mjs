@@ -1,52 +1,11 @@
-import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
-import { fileChanged, matchesDocument, normalizeDocument } from '../js/model.js';
-
-const base={id:'00000000-0000-4000-8000-000000000001',code:'TEST-001',title:'Documento',discipline:'Civil',revision:'A',file_path:'id/a.pdf',updated_at:'2026-08-21T00:00:00Z',active:true};
-assert.equal(normalizeDocument(base)?.code,'TEST-001');
-assert.equal(matchesDocument(base,{query:'documento'}),true);
-assert.equal(matchesDocument(base,{discipline:'Elétrica'}),false);
-assert.equal(fileChanged(base,base),false);
-assert.equal(fileChanged(base,{...base,revision:'B'}),true);
-
-const paths=[
-  '../js/api.js',
-  '../js/db.js',
-  '../js/sync.js',
-  '../sw.js',
-  '../supabase/migrations/20260821154420_initial_byd_skyrail_schema.sql',
-  '../supabase/migrations/20260821173500_add_governance_and_document_history.sql',
-  '../supabase/migrations/20260821174500_move_admin_helper_to_private_schema.sql',
-  '../supabase/migrations/20260821175500_optimize_governance_policies.sql'
-];
-const files=await Promise.all(paths.map(p=>readFile(new URL(p,import.meta.url),'utf8')));
-const [api,db,sync,sw,initialMigration,governanceMigration,privateAuthMigration,performanceMigration]=files;
-const source=files.join('\n').toLowerCase();
-assert.doesNotMatch(source,/docinspector_|sky17_|service_role|servicerole|secretkey/);
-assert.match(api,/findByCode/);
-assert.match(api,/maybeSingle/);
-assert.match(api,/listMembers/);
-assert.match(api,/updateMember/);
-assert.match(api,/listDocumentHistory/);
-assert.doesNotMatch(api,/remove\(old\)/);
-assert.match(db,/const META='documents';const FILES='files'/);
-assert.match(sync,/f\.blob\.slice\(0,5\)\.arrayBuffer/);
-assert.match(sw,/const VERSION='1\.0\.0'/);
-assert.match(sw,/byd-skyrail-/);
-assert.match(initialMigration,/create table public\.members/i);
-assert.match(initialMigration,/create table public\.documents/i);
-assert.match(initialMigration,/enable row level security/i);
-assert.match(initialMigration,/storage_read_documents/);
-assert.match(governanceMigration,/create table if not exists public\.document_history/i);
-assert.match(governanceMigration,/handle_new_auth_user/i);
-assert.match(governanceMigration,/capture_document_history/i);
-assert.match(governanceMigration,/REVISION_UPDATED/);
-assert.match(privateAuthMigration,/create schema if not exists private/i);
-assert.match(privateAuthMigration,/create or replace function private\.is_active_admin/i);
-assert.match(privateAuthMigration,/drop function if exists public\.is_active_admin/i);
-assert.match(privateAuthMigration,/document_history_read_admin/i);
-assert.match(performanceMigration,/documents_created_by_idx/i);
-assert.match(performanceMigration,/documents_updated_by_idx/i);
-assert.match(performanceMigration,/document_history_recorded_by_idx/i);
-assert.match(performanceMigration,/members_read_self_or_admin/i);
-console.log('BYD Skyrail standalone: isolamento, sync, governança e histórico validados.');
+import assert from'node:assert/strict';
+import{readFile}from'node:fs/promises';
+import{matchesDocument,normalizeDocument}from'../js/model.js';
+const base={id:'doc-1',code:'DE-17.00.00.00-6P5-1301',title:'Diagrama Unifilar',description:'Alimentação principal',discipline:'Elétrica',document_type:'Desenho',system_id:'energia',system_name:'Energia',revision:'D',file_path:'doc-1.pdf',updated_at:'2026-08-24T14:00:00-03:00',status:'active',active:true};
+assert.equal(normalizeDocument(base)?.code,base.code);assert.equal(matchesDocument(base,{query:'unifilar'}),true);assert.equal(matchesDocument(base,{query:'alimentacao'}),true);assert.equal(matchesDocument(base,{systemId:'energia'}),true);assert.equal(matchesDocument(base,{documentType:'Desenho'}),true);assert.equal(matchesDocument(base,{status:'active'}),true);
+const paths=['../js/api.js','../js/db.js','../js/sync.js','../js/client.js','../js/app.js','../js/systems-ux.js','../js/ux-adjustments.js','../js/local-documents-ux.js','../js/documents/catalog-repository.js','../js/documents/file-service.js','../js/documents/package-import-service.js','../js/documents/zip-stream.js','../js/documents/incremental-update.js','../js/documents/viewer-service.js','../index.html','../sw.js','../capacitor.config.json','../vite.config.js','../documents.json','../package.json'];
+const files=await Promise.all(paths.map(path=>readFile(new URL(path,import.meta.url),'utf8'))),[api,db,sync,client,app,systemsUx,uxJs,localUx,catalogRepo,fileService,packageImport,zipStream,incremental,viewer,index,sw,capacitor,vite,catalog,packageJson]=files,all=files.join('\n');
+assert.doesNotMatch(api,/storage\.from\(['"]documents['"]\)/);assert.match(api,/documentRepository\.getAll/);assert.match(api,/documentRepository\.getSystems/);assert.match(api,/Download por nuvem foi removido/);assert.match(db,/documentFileService/);assert.doesNotMatch(sync,/navigator\.onLine.*throw/);assert.match(client,/from '@supabase\/supabase-js'/);assert.doesNotMatch(index,/cdn\.jsdelivr\.net\/npm\/@supabase/);
+assert.match(catalogRepo,/class JsonDocumentRepository/);assert.match(catalogRepo,/search\(query/);assert.match(catalogRepo,/codeN === qCode/);assert.match(catalogRepo,/Directory\.Data/);assert.match(fileService,/Directory\.Data/);assert.match(fileService,/skyrail\/documents/);assert.match(fileService,/supportsStreamingWeb/);assert.match(packageImport,/manifest\.json/);assert.match(packageImport,/documents\//);assert.match(packageImport,/readZipDirectory/);assert.match(packageImport,/streamZipEntry/);assert.match(zipStream,/Inflate/);assert.match(zipStream,/file\.slice\(/);assert.match(incremental,/createCatalogImportPlan/);assert.match(viewer,/pdfjs-dist/);assert.match(viewer,/Página/);assert.match(viewer,/data-pdf-in/);assert.match(localUx,/Importar atualização/);assert.match(localUx,/Documentação local/);
+assert.match(capacitor,/"webDir": "dist"/);assert.match(capacitor,/com\.byd\.skyrail\.documents/);assert.match(vite,/outDir: 'dist'/);assert.match(packageJson,/@capacitor\/core/);assert.match(packageJson,/@capacitor\/filesystem/);assert.match(packageJson,/pdfjs-dist/);assert.match(packageJson,/fflate/);assert.match(catalog,/"documents": \[\]/);assert.match(sw,/byd-skyrail-/);
+assert.match(app,/\['home', 'documents', 'profile', 'audit'\]/);assert.match(systemsUx,/#\/documents\?system=/);assert.doesNotMatch(uxJs,/enhanceSystemFilter/);assert.match(localUx,/data-open-doc/);assert.doesNotMatch(all,/service_role|servicerole|secretkey/i);console.log('BYD Skyrail: arquitetura local-first V1.1 validada.');

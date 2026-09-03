@@ -1,0 +1,136 @@
+/* V1 polish layer: consistent interaction, responsive/tablet behavior and notifications */
+:root{--focus-ring:0 0 0 3px rgba(6,53,109,.18);--refine-gap:14px}
+html,body{overflow-x:hidden}
+button,.btn,.nav-btn,.mobile-nav-btn,.quick-card,.doc-table tbody tr,.mobile-doc-card,.system-home-card{transition:background-color .16s ease,border-color .16s ease,box-shadow .16s ease,transform .16s ease,opacity .16s ease}
+button:focus-visible,.btn:focus-visible,.nav-btn:focus-visible,.mobile-nav-btn:focus-visible,.doc-table tbody tr:focus-visible,.mobile-doc-card:focus-visible,.system-home-card:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+button:focus:not(:focus-visible),.btn:focus:not(:focus-visible){outline:0}
+button:disabled,.btn:disabled{opacity:.55;cursor:not-allowed;filter:saturate(.75);transform:none!important}
+.btn.is-loading{position:relative;pointer-events:none}.btn.is-loading::after{content:"";width:14px;height:14px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;display:inline-block;margin-left:8px;vertical-align:-2px;animation:byd-spin .7s linear infinite}@keyframes byd-spin{to{transform:rotate(360deg)}}
+.quick-card:active,.system-home-card:active,.mobile-doc-card[data-open-doc]:active{transform:scale(.995)}
+.quick-card .quick-link{max-width:100%;white-space:nowrap;overflow-wrap:normal;word-break:normal;display:inline-flex;align-items:center;gap:7px}
+.quick-card .quick-link svg{flex:0 0 18px}
+.local-catalog-grid{grid-template-columns:repeat(auto-fit,minmax(min(180px,100%),1fr))}
+.local-catalog-grid>span{min-width:0}
+.local-catalog-grid b,.local-catalog-grid small{max-width:100%;overflow-wrap:anywhere;word-break:normal}
+.home-widgets>.local-catalog-summary{grid-column:1/-1;margin-bottom:0}
+
+/* Keep cards and their contents inside the available viewport/grid cell. */
+.page-shell,.page-head,.page-head>div,.page-actions,.panel-card,.widget-card,.quick-card,.search-panel,.profile-section,.user-row,.mobile-doc-card,.mobile-doc-top,.mobile-doc-meta,.notification-head,.notification-head>div,.notification-item,.systems-home-section,.system-home-card,.system-card-copy,.results-bar,.results-tools{min-width:0;box-sizing:border-box}
+.panel-card,.widget-card,.quick-card,.search-panel,.profile-section,.mobile-doc-card,.systems-home-section,.system-home-card{max-width:100%}
+.page-head h1,.page-head p,.panel-card h1,.panel-card h2,.panel-card h3,.panel-card p,.widget-card strong,.widget-card p,.quick-card strong,.quick-card span,.profile-section h2,.profile-section p,.user-row strong,.user-row small,.doc-code,.doc-description,.local-doc-description,.system-tag,.status-badge,.notification-item strong,.notification-item>span,.system-card-copy strong,.system-card-copy small,.modal-head-copy strong,.modal-head-copy small,.toast{overflow-wrap:anywhere;word-break:normal}
+.quick-card .quick-link{overflow-wrap:normal;word-break:normal}
+.doc-description,.local-doc-description{white-space:normal;line-height:1.42}
+.status-badge,.system-tag{max-width:100%;white-space:normal;text-align:center}
+.panel-card>h3:first-child,.profile-section h2{margin-top:0}
+.search-panel{padding:18px}
+.results-bar{display:flex;align-items:center;justify-content:space-between;gap:10px 18px;flex-wrap:wrap}
+.results-tools{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.doc-table{width:100%;border-collapse:separate;border-spacing:0}.doc-table th,.doc-table td{vertical-align:top}.doc-table td{line-height:1.4}.doc-table tbody tr:last-child td{border-bottom:0}
+.doc-table-wrap{max-width:100%;overflow:auto;overscroll-behavior-x:contain;overscroll-behavior-y:auto;border-radius:12px;scrollbar-gutter:stable}
+.doc-table-wrap:focus-visible{outline:0;box-shadow:var(--focus-ring)}
+
+/* Whole-row/card document interaction with transient loading feedback. */
+.doc-table tbody tr[data-open-doc]{cursor:pointer}
+.doc-table tbody tr[data-open-doc]:hover{background:rgba(6,53,109,.045)}
+.doc-table tbody tr[data-open-doc]:active{background:rgba(6,53,109,.075)}
+.doc-table tbody tr[data-open-doc][aria-busy="true"],.mobile-doc-card[data-open-doc][aria-busy="true"]{opacity:.7;pointer-events:none}
+.mobile-doc-card[data-open-doc]{cursor:pointer}
+.mobile-doc-card[data-open-doc]:hover{border-color:rgba(6,53,109,.28);box-shadow:0 7px 20px rgba(15,23,42,.08)}
+.mobile-doc-actions{color:var(--blue-800);font-size:12px;font-weight:850}
+.local-card-action{display:inline-flex;align-items:center;gap:5px;color:var(--blue-800);font-size:12px;font-weight:850}
+.local-pagination{display:flex;justify-content:center;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px}.local-pagination button{min-height:40px;border:1px solid #cfd9e6;border-radius:9px;background:#fff;color:var(--blue-800);padding:0 14px;font-weight:800;cursor:pointer}.local-pagination button:hover:not(:disabled){background:var(--blue-50)}
+
+/* Empty/error/loading states use the same visual language. */
+.empty-state{min-height:190px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;gap:3px}
+.empty-state h3{max-width:680px}.empty-state p{max-width:720px;margin-bottom:0;line-height:1.5}
+.empty-state-icon{width:46px;height:46px;border-radius:12px;display:grid;place-items:center;margin-bottom:9px;background:var(--blue-50);color:var(--blue-800);border:1px solid #dce8f3}.empty-state-icon svg{width:23px;height:23px}
+.local-import-status{min-height:44px;display:flex;align-items:center;line-height:1.4}.local-import-status.error{color:#9a1b1b}.local-import-status.success{color:#176b3a}
+.toast{line-height:1.45;white-space:normal}
+.login-error{line-height:1.45;overflow-wrap:anywhere}
+
+/* Header, menu and role presentation. */
+.header-tools{min-width:0}.user-menu{max-width:min(280px,calc(100vw - 20px))}.user-menu button:focus-visible{background:var(--blue-50)}
+.icon-btn:not([data-notifications-bound="1"]) .notification-dot{display:none!important}
+.ui-refinement-icon{width:18px;height:18px;flex:0 0 18px}
+.access-role{min-width:0}.access-role>div{min-width:0}.access-role[data-role="ADMIN"] .quick-icon{background:#eef5ff}.access-role[data-role="CONTROLLER"] .quick-icon{background:#fff7df;color:#8a6100}.access-role[data-role="USER"] .quick-icon{background:#f5f8fc}
+html[data-byd-role="CONTROLLER"] [data-controller-updates] svg{width:19px;height:19px}
+
+/* Notifications are functional, keyboard reachable, and never overflow the viewport. */
+.notification-dot[hidden]{display:none!important}
+.notification-panel{position:fixed;z-index:1200;top:max(74px,calc(env(safe-area-inset-top) + 64px));right:max(16px,calc((100vw - 1240px)/2));width:min(420px,calc(100vw - 32px));max-height:min(640px,calc(100dvh - 96px));display:flex;flex-direction:column;background:#fff;border:1px solid #d9e2ec;border-radius:16px;box-shadow:0 20px 55px rgba(15,23,42,.18);overflow:hidden}
+.notification-panel.hidden{display:none}
+.notification-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 16px 12px;border-bottom:1px solid #e7edf4}.notification-head strong{font-size:17px;display:block}.notification-head small{display:block;color:#66788c;margin-top:2px}.notification-head-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;flex:0 0 auto}
+.notification-list{overflow:auto;padding:8px;overscroll-behavior:contain}.notification-item{width:100%;border:0;border-radius:12px;background:#fff;padding:12px;text-align:left;display:grid;gap:4px;color:inherit;cursor:pointer}.notification-item:hover{background:#f5f8fc}.notification-item.unread{background:#eef5ff}.notification-item.unread:hover{background:#e7f1ff}.notification-kind{text-transform:uppercase;font-size:10px;letter-spacing:.06em;color:#4e6b88;font-weight:800}.notification-item strong{font-size:14px}.notification-item>span:not(.notification-kind){font-size:13px;color:#53687d}.notification-item time{font-size:11px;color:#7a8b9c}.notification-item em{font-style:normal;font-size:12px;font-weight:700;color:#06356d}.notification-empty{display:grid;gap:5px;text-align:center;padding:34px 20px;color:#66788c}.notification-empty strong{color:#17324f}
+
+/* Systems and cards share spacing and wrapping rules. */
+.systems-section-head>div{min-width:0}.system-home-card{overflow:hidden}.system-card-action{overflow-wrap:anywhere}.systems-empty{line-height:1.45}
+.controller-update-card{max-width:760px}.controller-update-notice{display:grid;gap:5px;margin-top:16px;padding:14px;border-radius:12px;background:#f5f8fc;border:1px solid #dfe8f1}.controller-update-notice span{color:#5c6f82;overflow-wrap:anywhere}
+
+/* Modal headings may wrap; PDF viewer keeps its own dedicated full-screen layout. */
+.modal:not(.local-pdf-viewer) .modal-head{gap:12px;align-items:flex-start}.modal:not(.local-pdf-viewer) .modal-head-copy{min-width:0;flex:1}.modal:not(.local-pdf-viewer) .modal-head-copy strong{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.35}.modal:not(.local-pdf-viewer) .modal-head-copy small{white-space:normal;line-height:1.35}
+.modal-body,.local-import-body{min-width:0}.modal-row>div{min-width:0}
+
+/* PDF viewer: controls remain outside the scrollable document and canvas is HiDPI-rendered by viewer-service. */
+.local-pdf-head-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.local-pdf-toolbar{position:relative;flex:0 0 auto;max-width:none;width:100%;overflow:auto;overscroll-behavior:contain}.local-pdf-stage{overscroll-behavior:contain;text-align:initial}.local-pdf-head-copy strong{overflow-wrap:anywhere}.local-pdf-stage canvas{display:block;margin-left:auto;margin-right:auto;max-width:none}
+
+/* Systemic visual-audit guardrails: a defect class fixed in one component must not reappear in siblings. */
+.quick-grid>*,.home-widgets>*,.stats-grid>*,.audit-grid>*,.profile-layout>*,.profile-side>*,.profile-main>*,.profile-grid>*,.password-grid>*,.systems-card-grid>*,.local-filter-grid>*,.local-packager-metrics>*,.local-packager-size>*,.local-packager-actions>*,.widget-head>*,.sync-summary>div,.activity-row>div,.ux-detail-item,.field,.local-packager-field,.modal-row,.user-row>div{min-width:0}
+.btn,button,input,select,textarea{max-width:100%}
+.btn{white-space:normal;overflow-wrap:anywhere;line-height:1.2}
+.widget-head,.sync-summary,.profile-section-head,.systems-section-head,.modal-row,.user-row{min-width:0}
+.hero h1,.hero p,.sync-summary h3,.sync-summary p,.activity-row,.ux-detail-item strong,.ux-detail-item span,.modal-row strong,.modal-row .subtle,.local-packager-warning,.local-packager-errors,.local-packager-ok,.local-import-status{overflow-wrap:anywhere;word-break:normal}
+.audit-table-wrap{max-width:100%;overflow-x:auto;overflow-y:visible;overscroll-behavior-x:contain;overscroll-behavior-y:auto;border-radius:10px;scrollbar-gutter:stable}
+.audit-table-wrap .audit-table{min-width:620px}
+body.has-modal-open{overflow:hidden}
+.modal-backdrop .modal{overscroll-behavior:contain}
+
+/* Tablet landscape / narrower desktop. */
+@media (max-width:1199px){
+  .doc-table-wrap[data-local-layout="desktop"] .doc-table th:nth-child(6),.doc-table-wrap[data-local-layout="desktop"] .doc-table td:nth-child(6){display:table-cell}
+}
+@media (max-width:1100px){
+  .page-shell{padding-left:18px;padding-right:18px}.quick-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.home-widgets{grid-template-columns:repeat(2,minmax(0,1fr))}.doc-table{min-width:980px}.notification-panel{right:14px}
+  .system-home-card{min-height:104px}.panel-card,.widget-card,.search-panel{min-width:0}
+}
+@media (max-width:1100px) and (min-width:901px){
+  .quick-grid.admin{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stats-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:900px){
+  .topbar-inner{gap:8px}.header-tools{gap:5px}.user-chip{max-width:150px}.user-chip-copy{min-width:0}
+  .page-head{gap:12px;align-items:flex-start}.page-head,.page-actions{flex-wrap:wrap}.page-actions{width:100%}.page-actions .btn{flex:1 1 auto}
+  .search-row{grid-template-columns:1fr}.local-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.quick-grid,.quick-grid.admin,.home-widgets,.stats-grid,.audit-grid,.profile-layout{grid-template-columns:1fr}
+  .notification-panel{top:max(68px,calc(env(safe-area-inset-top) + 58px))}.local-pdf-head{padding:10px 12px}.local-pdf-head-copy strong{font-size:13px}.local-pdf-head-actions .btn{min-height:40px}.controller-update-card{max-width:none}
+  .admin-tabs{overflow-x:auto;max-width:100%;scrollbar-width:thin}.admin-tab{flex:0 0 auto;white-space:nowrap}
+}
+@media (max-width:767px){
+  .page-shell{padding-left:12px;padding-right:12px;padding-bottom:calc(88px + env(safe-area-inset-bottom))}.page-head h1{font-size:24px}.quick-grid{grid-template-columns:1fr}.local-filter-grid{grid-template-columns:1fr}
+  .notification-panel{top:max(58px,calc(env(safe-area-inset-top) + 50px));right:8px;width:calc(100vw - 16px);max-height:calc(100dvh - 76px - env(safe-area-inset-bottom));border-radius:14px}.notification-head{align-items:stretch;flex-direction:column}.notification-head-actions{justify-content:flex-start}.notification-item{padding:11px}
+  .local-pdf-head{align-items:stretch}.local-pdf-head-actions{width:100%;justify-content:flex-start}.local-pdf-head-actions .btn{flex:1 1 0;min-width:44px}.local-pdf-toolbar{justify-content:flex-start;overflow-x:auto;flex-wrap:nowrap;padding:7px 8px}.local-pdf-toolbar .btn{white-space:nowrap;min-height:40px;flex:0 0 auto}.local-pdf-toolbar-separator{flex:0 0 1px}.local-pdf-stage{padding:6px}
+  .mobile-doc-card{padding:14px}.mobile-doc-actions{justify-content:flex-start}.results-bar{align-items:flex-start}.results-tools{width:100%}.results-tools select{max-width:100%}
+  .local-pagination{justify-content:space-between}.local-pagination span{order:-1;width:100%;text-align:center}
+  html[data-byd-role="CONTROLLER"] .mobile-bottom-nav{grid-template-columns:repeat(4,minmax(0,1fr))!important}.mobile-bottom-nav [data-controller-updates] span{font-size:9px}
+  #admin-content .doc-table-wrap{display:block;max-width:100%;overflow-x:auto}
+  #admin-content .doc-table{min-width:900px}
+}
+@media (max-width:560px){
+  .notification-head-actions .btn{flex:1 1 auto}.system-home-card{padding:15px}.systems-home-section{padding:16px}
+  .modal-head{padding-left:14px;padding-right:14px}.modal-body{padding:16px}.admin-form{gap:12px}
+  .local-pdf-head-actions .btn span{display:none}.local-pdf-head-actions .btn{flex:0 0 44px;width:44px;padding-left:10px;padding-right:10px}.local-pdf-page-indicator{font-size:.82rem}.local-pdf-zoom-indicator{min-width:88px}.local-pdf-toolbar{gap:6px}
+}
+@media (max-width:390px){.local-pagination button{flex:1}.notification-head-actions{width:100%}}
+@media (hover:none) and (pointer:coarse){
+  button,.btn,.nav-btn,.mobile-nav-btn{min-height:44px;-webkit-tap-highlight-color:transparent}.doc-table tbody tr[data-open-doc]{min-height:48px}.notification-item{min-height:66px}.local-pdf-toolbar .btn{min-height:44px}.mobile-doc-card[data-open-doc]:active{transform:scale(.995)}
+  .btn:hover:not(:disabled),.quick-card:hover,.system-home-card:hover{transform:none}
+  .quick-card:hover{border-color:var(--line);box-shadow:var(--shadow-sm)}
+  .system-home-card:hover{border-color:#d8e3ee;box-shadow:none}
+  .mobile-doc-card[data-open-doc]:hover{border-color:var(--line);box-shadow:var(--shadow-sm)}
+  .btn-primary:hover{background:linear-gradient(180deg,var(--gold-500),var(--gold-600))}
+  .btn-blue:hover{background:var(--blue-800)}
+  .btn-outline:hover{background:#fff}
+  .btn-ghost:hover{background:transparent}
+  .nav-btn:hover,.icon-btn:hover,.user-chip:hover{background:transparent}
+  .notification-item:hover{background:#fff}.notification-item.unread:hover{background:#eef5ff}
+  .user-menu button:hover{background:transparent}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}

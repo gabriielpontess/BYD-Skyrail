@@ -1,9 +1,30 @@
 {
   "name": "byd-skyrail",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
-    "test": "node tests/standalone.test.mjs"
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node tests/standalone.test.mjs && node tests/local-documents.test.mjs && node tests/android-systemic-contracts.test.mjs && node tests/incremental-update.test.mjs && node tests/document-packager.test.mjs && node tests/document-packager-incremental.test.mjs && node tests/document-packager-unicode-path.test.mjs && node tests/notifications.test.mjs && node tests/ui-contracts.test.mjs && node tests/observer-ownership.test.mjs && node tests/systemic-ux-guard.test.mjs && node tests/permission-presentation.test.mjs && node tests/user-creation.test.mjs && node tests/invite-onboarding.test.mjs && node tests/service-worker-update.test.mjs",
+    "test:browser": "node tests/browser-smoke-runner.mjs",
+    "review:local": "npm test && npm run build && npm run test:browser",
+    "android:patch": "node scripts/patch-android-native-importer.mjs",
+    "android:add": "cap add android && npm run android:patch",
+    "android:sync": "npm run build && cap sync android && npm run android:patch",
+    "android:open": "cap open android"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.5.0",
+    "@capacitor/filesystem": "8.1.3",
+    "@supabase/supabase-js": "2.111.0",
+    "fflate": "0.8.3",
+    "pdfjs-dist": "6.2.108",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "@capacitor/android": "8.5.0",
+    "@capacitor/cli": "8.5.0",
+    "vite": "8.2.2"
   }
 }

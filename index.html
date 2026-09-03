@@ -3,19 +3,139 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#111827">
+  <meta name="theme-color" content="#06356d">
+  <meta name="color-scheme" content="light">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="BYD Skyrail">
   <title>BYD Skyrail</title>
-  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="manifest" href="/manifest.webmanifest">
   <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./ux-adjustments.css">
+  <link rel="stylesheet" href="./systems.css">
+  <link rel="stylesheet" href="./local-documents.css">
+  <link rel="stylesheet" href="./document-pagination.css">
+  <link rel="stylesheet" href="./packager.css">
+  <link rel="stylesheet" href="./polish.css">
 </head>
 <body>
   <div id="app"></div>
   <div id="toast" class="toast" aria-live="polite"></div>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.111.0/dist/umd/supabase.js"></script>
-  <script src="./config.js"></script>
-  <script type="module" src="./js/app.js"></script>
+  <aside id="boot-diagnostic" hidden style="position:fixed;inset:0;z-index:2147483647;background:#f4f7fb;color:#0b2f5b;padding:max(24px,env(safe-area-inset-top)) 20px 24px;font:14px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:auto">
+    <div style="max-width:720px;margin:0 auto;background:#fff;border:1px solid #d7e1ec;border-radius:16px;padding:20px;box-shadow:0 12px 40px rgba(15,23,42,.12)">
+      <strong style="display:block;font-size:20px;margin-bottom:6px">Diagnóstico de inicialização</strong>
+      <p style="margin:0 0 14px;color:#52657a">O BYD Skyrail não concluiu a inicialização. Tire uma captura desta tela e envie no chat.</p>
+      <pre id="boot-diagnostic-details" style="white-space:pre-wrap;word-break:break-word;margin:0;background:#f6f8fb;border-radius:10px;padding:12px;color:#132a44"></pre>
+      <button id="boot-reload" type="button" style="margin-top:14px;border:1px solid #c8d6e5;border-radius:9px;background:#fff;color:#06356d;padding:10px 14px;font-weight:700">Tentar novamente</button>
+    </div>
+  </aside>
   <script>
-    if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    (() => {
+      const errors = [];
+      const startedAt = Date.now();
+      const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      const remember = value => { errors.push(String(value || 'erro desconhecido')); if (errors.length > 8) errors.shift(); };
+      addEventListener('error', event => {
+        const target = event.target;
+        if (target && target !== window && (target.src || target.href)) remember(`Recurso: ${target.src || target.href}`);
+        else remember(`Erro: ${event.message || 'sem mensagem'}${event.filename ? ` @ ${event.filename}:${event.lineno || 0}` : ''}`);
+      }, true);
+      addEventListener('unhandledrejection', event => remember(`Promise: ${event.reason?.message || event.reason || 'rejeição sem mensagem'}`));
+      globalThis.__BYD_BOOT_DIAG = { errors, startedAt };
+      const storageCheck = () => {
+        try { localStorage.setItem('__byd_boot_test','1'); localStorage.removeItem('__byd_boot_test'); return 'ok'; }
+        catch (error) { return `falhou: ${error?.name || error}`; }
+      };
+      setTimeout(async () => {
+        const app = document.querySelector('#app');
+        const invite = document.querySelector('#invite-activation-root');
+        const rect = app?.getBoundingClientRect();
+        const inviteRect = invite?.getBoundingClientRect();
+        const hasVisibleApp = Boolean((app && app.textContent.trim() && rect && rect.height > 24) || (invite && invite.textContent.trim() && inviteRect && inviteRect.height > 24));
+        if (hasVisibleApp) return;
+        let sw = 'indisponível';
+        try {
+          if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            sw = `${registrations.length} registro(s) · controller=${navigator.serviceWorker.controller ? 'sim' : 'não'}`;
+          }
+        } catch (error) { sw = `erro: ${error?.message || error}`; }
+        const details = [
+          `build: PR8-sw-retired-2`,
+          `tempo: ${Math.round((Date.now()-startedAt)/1000)}s`,
+          `modo standalone: ${isStandalone() ? 'sim' : 'não'}`,
+          `online: ${navigator.onLine ? 'sim' : 'não'}`,
+          `URL: ${location.href}`,
+          `hash: ${location.hash || '(vazio)'}`,
+          `localStorage: ${storageCheck()}`,
+          `service worker: ${sw}`,
+          `app HTML: ${app?.innerHTML?.length || 0} caracteres`,
+          `app altura: ${Math.round(rect?.height || 0)}px`,
+          `erros capturados: ${errors.length ? '\n- ' + errors.join('\n- ') : 'nenhum'}`,
+          `user agent: ${navigator.userAgent}`
+        ];
+        document.querySelector('#boot-diagnostic-details').textContent = details.join('\n');
+        document.querySelector('#boot-diagnostic').hidden = false;
+      }, 4500);
+      addEventListener('DOMContentLoaded', () => {
+        document.querySelector('#boot-reload')?.addEventListener('click', () => location.reload());
+      });
+    })();
+  </script>
+  <script type="module">
+    async function retireLegacyServiceWorker() {
+      if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return true;
+      try {
+        const url = new URL(location.href);
+        const pass = Math.max(0, Number(url.searchParams.get('__byd_swclean') || 0) || 0);
+        const hadController = Boolean(navigator.serviceWorker.controller);
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        const cacheKeys = 'caches' in globalThis ? await caches.keys() : [];
+        const bydCaches = cacheKeys.filter(key => key.startsWith('byd-skyrail-'));
+
+        await Promise.all(registrations.map(registration => registration.unregister()));
+        if ('caches' in globalThis) await Promise.all(bydCaches.map(key => caches.delete(key)));
+
+        if ((hadController || registrations.length || bydCaches.length) && pass < 2) {
+          url.searchParams.set('__byd_swclean', String(pass + 1));
+          location.replace(url.toString());
+          return false;
+        }
+
+        if (url.searchParams.has('__byd_swclean')) {
+          url.searchParams.delete('__byd_swclean');
+          history.replaceState(history.state, '', `${url.pathname}${url.search}${url.hash}`);
+        }
+        return true;
+      } catch (error) {
+        console.warn('[BYD Skyrail] Falha ao aposentar Service Worker legado:', error);
+        globalThis.__BYD_BOOT_DIAG?.errors?.push(`SW cleanup: ${error?.message || error}`);
+        return true;
+      }
+    }
+
+    async function bootApplication() {
+      const canBoot = await retireLegacyServiceWorker();
+      if (!canBoot) return;
+      await import('./js/users/invite-onboarding.js');
+      // A apresentação de role precisa observar o #app antes de app.js iniciar seu
+      // boot assíncrono. Assim, o primeiro shell de CONTROLLER já é normalizado na
+      // mesma entrega de mutação e nenhum cargo transitório vence a UI canônica.
+      await import('./js/role-ux.js');
+      await import('./js/app.js');
+      await import('./js/systems-ux.js');
+      await import('./js/ux-adjustments.js');
+      await import('./js/local-documents-ux.js');
+      await import('./js/document-packager-ux.js');
+      await import('./js/notifications-ux.js');
+      await import('./js/ui-refinement.js');
+      await import('./js/systemic-ux-guard.js');
+    }
+
+    bootApplication().catch(error => {
+      console.error('[BYD Skyrail] Falha crítica no bootstrap:', error);
+      globalThis.__BYD_BOOT_DIAG?.errors?.push(`Bootstrap: ${error?.message || error}`);
+    });
   </script>
 </body>
 </html>
