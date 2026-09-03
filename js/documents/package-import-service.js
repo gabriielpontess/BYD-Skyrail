@@ -1,155 +1,21 @@
-import { Capacitor, registerPlugin } from '@capacitor/core';
-import { strFromU8, Unzip, UnzipInflate } from 'fflate';
-import { documentRepository } from './catalog-repository.js';
-import { documentFileService } from './file-service.js';
-import { packageStagingService } from './package-staging-service.js';
-import { notificationService } from './notification-service.js';
-
-const MANIFEST='manifest.json';
-const DEFAULT_CATALOG='documents.json';
-const MAX_SCHEMA_VERSION=1;
+import{Capacitor,registerPlugin}from'@capacitor/core';
+import{documentRepository}from'./catalog-repository.js';
+import{documentFileService}from'./file-service.js';
+import{notificationService}from'./notification-service.js';
+import{createCatalogImportPlan,documentIsActive}from'./incremental-update.js';
+import{Sha256Stream}from'./sha256-stream.js';
+import{readZipDirectory,readZipEntryText,streamZipEntry}from'./zip-stream.js';
+const MANIFEST='manifest.json',CATALOG='documents.json',MAX_SCHEMA=2,MAX_META=16*1024*1024,MAX_TOTAL=20*1024*1024*1024,FALLBACK_PACKAGE=128*1024*1024,FALLBACK_PDF=32*1024*1024;
 const NativePackageImporter=registerPlugin('NativePackageImporter');
-
-function concat(chunks,total){const out=new Uint8Array(total);let offset=0;for(const chunk of chunks){out.set(chunk,offset);offset+=chunk.length}return out}
-function parseJson(text,label){try{return JSON.parse(text)}catch{throw new Error(`${label} contém JSON inválido.`)}}
-function validateManifest(value){
-  if(!value||typeof value!=='object')throw new Error('Manifesto do pacote inválido.');
-  if(!String(value.packageVersion||'').trim())throw new Error('Manifesto sem packageVersion.');
-  return {packageVersion:String(value.packageVersion).trim(),createdAt:value.createdAt||null,catalogFile:String(value.catalogFile||DEFAULT_CATALOG).trim(),schemaVersion:Number(value.schemaVersion||1),contentBytes:Number(value.contentBytes||0),sourceZipBytes:Number(value.sourceZipBytes||0)};
-}
-function validateCatalog(value,manifest){
-  if(!value||typeof value!=='object'||!Array.isArray(value.documents))throw new Error('Catálogo documents.json inválido.');
-  const schema=Number(value.schemaVersion||manifest.schemaVersion||1);
-  if(schema>MAX_SCHEMA_VERSION)throw new Error(`Pacote incompatível: schemaVersion ${schema}.`);
-  const ids=new Set(),documentKeys=new Set();
-  for(const doc of value.documents){
-    const id=String(doc.id||'').trim(),code=String(doc.code||'').trim(),title=String(doc.title||'').trim(),revision=String(doc.revision||'').trim(),file=String(doc.file||doc.file_path||'').trim();
-    const system=String(doc.system_id||doc.system_name||'').trim().toLocaleLowerCase('pt-BR');
-    if(!id||!code||!title||!revision||!file)throw new Error('Há documento com campos obrigatórios ausentes no catálogo.');
-    if(ids.has(id))throw new Error(`ID duplicado no catálogo: ${id}`);
-    const key=`${code.toLocaleLowerCase('pt-BR')}|${system}`;
-    if(documentKeys.has(key))throw new Error(`Código duplicado no mesmo sistema: ${code}`);
-    ids.add(id);documentKeys.add(key);
-  }
-  return value;
-}
-
-async function unzipToStaging(file,runId,onProgress){
-  if(!(file instanceof File)||!/\.zip$/i.test(file.name))throw new Error('Selecione um pacote .zip válido.');
-  const textEntries=new Map();
-  const staged=new Set();
-  let writeChain=Promise.resolve(),writeFailure=null,entries=0,sourceBytes=0;
-  const unzip=new Unzip(entry=>{
-    const name=String(entry.name||'').replace(/^\.\//,'');
-    const chunks=[];let size=0;
-    entry.ondata=(error,data,final)=>{
-      if(error)throw error;
-      chunks.push(data);size+=data.length;
-      if(!final)return;
-      entries++;
-      const bytes=concat(chunks,size);
-      if(name===MANIFEST||name.endsWith('/'+MANIFEST)||name===DEFAULT_CATALOG||name.endsWith('/'+DEFAULT_CATALOG)){
-        textEntries.set(name,strFromU8(bytes));
-        onProgress?.({phase:'extract',entries,name,sourceBytes,totalSourceBytes:file.size});
-      }else if(/^documents\/.+\.pdf$/i.test(name)){
-        staged.add(name);
-        writeChain=writeChain.then(()=>packageStagingService.put(runId,name,bytes)).then(()=>{onProgress?.({phase:'extract',entries,name,sourceBytes,totalSourceBytes:file.size})}).catch(error=>{writeFailure=error});
-      }
-    };
-    entry.start();
-  });
-  unzip.register(UnzipInflate);
-  const reader=file.stream().getReader();
-  try{
-    while(true){
-      const {value,done}=await reader.read();
-      const chunk=value||new Uint8Array();sourceBytes+=chunk.length;
-      unzip.push(chunk,done);
-      await writeChain;
-      if(writeFailure)throw writeFailure;
-      if(done)break;
-    }
-    await writeChain;
-    if(writeFailure)throw writeFailure;
-    return {textEntries,staged};
-  }catch(error){
-    try{await reader.cancel()}catch{}
-    await packageStagingService.clear(runId);
-    throw new Error(`Falha ao extrair pacote: ${error?.message||error}`);
-  }
-}
-
-async function importNative(onProgress){
-  const previousDocuments=await documentRepository.getAll({includeInactive:true});
-  let listener=null;
-  try{
-    if(onProgress)listener=await NativePackageImporter.addListener('progress',event=>onProgress(event));
-    await NativePackageImporter.importPackage();
-    await documentRepository.load({force:true});
-    const currentDocuments=await documentRepository.getAll({includeInactive:true});
-    const info=await documentRepository.info();
-    try{notificationService.recordPackage(previousDocuments,currentDocuments,{packageVersion:info.packageVersion,createdAt:info.generatedAt})}catch(error){console.warn('[BYD Skyrail] Não foi possível registrar notificações locais:',error)}
-    return info;
-  }finally{
-    try{await listener?.remove()}catch{}
-  }
-}
-
-export class PackageImportService{
-  usesNativePicker(){return Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='android'}
-
-  async inspect(file,onProgress){
-    const runId=crypto.randomUUID();
-    const extracted=await unzipToStaging(file,runId,onProgress);
-    try{
-      const manifestText=[...extracted.textEntries.entries()].find(([name])=>name===MANIFEST||name.endsWith('/'+MANIFEST))?.[1];
-      if(!manifestText)throw new Error('Pacote sem manifest.json.');
-      const manifest=validateManifest(parseJson(manifestText,'manifest.json'));
-      const catalogText=[...extracted.textEntries.entries()].find(([name])=>name===manifest.catalogFile||name.endsWith('/'+manifest.catalogFile))?.[1];
-      if(!catalogText)throw new Error(`Pacote sem ${manifest.catalogFile}.`);
-      const rawCatalog=validateCatalog(parseJson(catalogText,manifest),manifest);
-      const active=rawCatalog.documents.filter(doc=>String(doc.status||'active').toLowerCase()==='active'&&doc.active!==false);
-      const missing=active.filter(doc=>!extracted.staged.has(`documents/${doc.file||doc.file_path}`));
-      if(missing.length)throw new Error(`Pacote incompleto: ${missing.length} PDF(s) referenciado(s) não foram encontrados.`);
-      return {runId,manifest,rawCatalog,staged:extracted.staged,documentCount:rawCatalog.documents.length,packageSize:file.size,contentBytes:manifest.contentBytes};
-    }catch(error){await packageStagingService.clear(runId);throw error}
-  }
-
-  async commit(plan,onProgress){
-    const {runId,manifest,rawCatalog}=plan;
-    const previousDocuments=await documentRepository.getAll({includeInactive:true});
-    const nextCatalog={...rawCatalog,schemaVersion:Number(rawCatalog.schemaVersion||manifest.schemaVersion||1),catalogVersion:String(rawCatalog.catalogVersion||manifest.packageVersion),generatedAt:rawCatalog.generatedAt||manifest.createdAt||new Date().toISOString(),packageVersion:manifest.packageVersion};
-    const docs=nextCatalog.documents.map(doc=>({...doc,file_path:`${manifest.packageVersion}__${doc.file||doc.file_path}`,file:doc.file||doc.file_path,package_version:manifest.packageVersion}));
-    nextCatalog.documents=docs;
-    try{
-      let done=0;
-      const activeDocs=docs.filter(item=>String(item.status||'active').toLowerCase()==='active'&&item.active!==false);
-      for(const doc of activeDocs){
-        const source=`documents/${doc.file}`;
-        const bytes=await packageStagingService.get(runId,source);
-        if(!bytes)throw new Error(`Arquivo ausente durante commit: ${doc.file}`);
-        await documentFileService.putBytes(doc,bytes);
-        await packageStagingService.remove(runId,source);
-        done++;onProgress?.({phase:'write',done,total:activeDocs.length,code:doc.code});
-      }
-      await documentRepository.replace(nextCatalog);
-      const currentDocuments=await documentRepository.getAll({includeInactive:true});
-      try{notificationService.recordPackage(previousDocuments,currentDocuments,{packageVersion:manifest.packageVersion,createdAt:nextCatalog.generatedAt})}catch(error){console.warn('[BYD Skyrail] Não foi possível registrar notificações locais:',error)}
-      await packageStagingService.clear(runId);
-      return await documentRepository.info();
-    }catch(error){
-      await packageStagingService.clear(runId);
-      const message=String(error?.message||error);
-      if(/space|quota|enospc/i.test(message))throw new Error('Não há espaço suficiente para concluir a atualização.');
-      throw new Error(`Importação interrompida sem substituir o catálogo ativo: ${message}`);
-    }
-  }
-
-  async import(file,onProgress){
-    if(this.usesNativePicker())return importNative(onProgress);
-    const plan=await this.inspect(file,onProgress);
-    return this.commit(plan,onProgress);
-  }
-}
-
+const text=v=>String(v??'').trim(),base=v=>String(v??'').replace(/\\/g,'/').split('/').pop()||'',safe=v=>String(v??'').replace(/[^a-zA-Z0-9._-]/g,'_'),digest=v=>text(v).toLowerCase();
+function json(v,label){try{return JSON.parse(v)}catch{throw new Error(`${label} contém JSON inválido.`)}}
+function pdfPath(v){let p=text(v).replace(/\\/g,'/');while(p.startsWith('./'))p=p.slice(2);if(!p||p.startsWith('/')||p.includes('\0')||!p.toLowerCase().endsWith('.pdf')||p.split('/').some(x=>!x||x==='.'||x==='..'))throw new Error(`Caminho de PDF inválido no catálogo: ${v}`);return p}
+function manifest(v){if(!v||typeof v!=='object')throw new Error('Manifesto do pacote inválido.');const packageVersion=text(v.packageVersion);if(!packageVersion)throw new Error('Manifesto sem packageVersion.');const schemaVersion=Number(v.schemaVersion||1);if(schemaVersion<1||schemaVersion>MAX_SCHEMA)throw new Error(`Pacote incompatível: schemaVersion ${schemaVersion}.`);const catalogFile=text(v.catalogFile||CATALOG);if(base(catalogFile)!==CATALOG)throw new Error('Pacote incompatível: catalogFile deve apontar para documents.json.');return{...v,packageVersion,schemaVersion,catalogFile,mode:text(v.mode||'full').toLowerCase()==='incremental'?'incremental':'full'}}
+function catalog(v,m){if(!v||typeof v!=='object'||!Array.isArray(v.documents))throw new Error('Catálogo documents.json inválido.');const ids=new Set(),keys=new Set();for(const d of v.documents){const id=text(d.id),code=text(d.code),title=text(d.title),revision=text(d.revision),file=pdfPath(d.file||d.file_path||''),system=text(d.system_id||d.system_name).toLocaleLowerCase('pt-BR'),sha=digest(d.sha256);if(!id||!code||!title||!revision)throw new Error('Há documento com campos obrigatórios ausentes no catálogo.');if(ids.has(id))throw new Error(`ID duplicado no catálogo: ${id}`);const key=`${code.toLocaleLowerCase('pt-BR')}|${system}`;if(keys.has(key))throw new Error(`Código duplicado no mesmo sistema: ${code}`);if(sha&&!/^[a-f0-9]{64}$/.test(sha))throw new Error(`SHA-256 inválido para ${code}.`);if(documentIsActive(d)&&(m.schemaVersion>=2||m.mode==='incremental')&&!sha)throw new Error(`Pacote sem SHA-256 para ${code}.`);d.file=file;if(sha)d.sha256=sha;ids.add(id);keys.add(key)}return v}
+function meta(entries,name){const rows=entries.filter(e=>!e.directory&&base(e.path)===name);if(rows.length>1)throw new Error(`Pacote contém metadado duplicado: ${name}`);return rows[0]||null}
+async function inspectWeb(file,onProgress){if(!(file instanceof File)||!/\.zip$/i.test(file.name))throw new Error('Selecione um pacote .zip válido.');if(!documentFileService.supportsStreamingWeb()&&file.size>FALLBACK_PACKAGE)throw new Error('Este navegador não oferece armazenamento streaming seguro para um pacote deste tamanho. Use o app Android ou um navegador atualizado com armazenamento privado habilitado.');const entries=await readZipDirectory(file,p=>onProgress?.(p)),byPath=new Map();let declared=0;for(const e of entries){if(e.directory)continue;if(byPath.has(e.path))throw new Error(`Pacote contém entrada duplicada: ${e.path}`);byPath.set(e.path,e);declared+=Math.max(0,Number(e.originalSize||0));if(declared>MAX_TOTAL)throw new Error('Pacote excede o limite seguro de conteúdo descompactado.')}const me=meta(entries,MANIFEST);if(!me)throw new Error('Pacote sem manifest.json.');const m=manifest(json(await readZipEntryText(file,me,{maxBytes:MAX_META}),MANIFEST)),ce=meta(entries,CATALOG);if(!ce)throw new Error(`Pacote sem ${m.catalogFile}.`);const c=catalog(json(await readZipEntryText(file,ce,{maxBytes:MAX_META}),CATALOG),m);for(const d of c.documents)if(documentIsActive(d)){const e=byPath.get(`documents/${pdfPath(d.file)}`);if(!e)throw new Error(`Pacote incompleto: PDF não encontrado para ${d.code}.`);if(Number(e.originalSize||0)<=0)throw new Error(`PDF vazio no pacote: ${d.file}`)}return{file,manifest:m,rawCatalog:c,byPath}}
+async function hashBlob(blob){if(!(blob instanceof Blob))return null;const h=new Sha256Stream(),r=blob.stream().getReader();try{for(;;){const{value,done}=await r.read();if(done)break;h.update(value||new Uint8Array())}return h.hex()}finally{try{await r.cancel()}catch{}}}
+async function commitWeb(plan,onProgress){const{file,manifest:m,rawCatalog,byPath}=plan,previousCatalog=await documentRepository.load(),before=await documentRepository.getAll({includeInactive:true}),cp=createCatalogImportPlan({previousCatalog,incomingCatalog:rawCatalog,manifest:m}),runId=crypto.randomUUID(),records=[],streaming=documentFileService.supportsStreamingWeb();let snapshot=null,committed=false,catalogDone=false,totalOut=0,removeIds=[];try{let done=0,total=cp.actions.filter(a=>a.isActive&&!a.reuse).length;for(const a of cp.actions){if(!a.isActive)continue;const expected=digest(a.incoming.sha256);if(a.reuse){a.next.sha256=expected||a.next.sha256;continue}if(a.verifyExisting){const old=a.existing?await documentFileService.getBlob(a.existing):null;if(old){if(await hashBlob(old)!==expected)throw new Error(`Conflito de integridade em ${text(a.incoming.code)||a.id}: a mesma revisão possui conteúdo diferente do instalado.`);a.next.file_path=a.existing.file_path;a.next.package_version=a.existing.package_version;a.next.sha256=expected;continue}}const entry=byPath.get(`documents/${pdfPath(a.incoming.file)}`);if(!entry)throw new Error(`Arquivo ausente durante commit: ${a.incoming.file}`);const physical=safe(`${m.packageVersion}__${runId}__${a.incoming.file}`),w=await documentFileService.createStreamWriter(a.next,physical,{maxBufferedBytes:FALLBACK_PDF});try{const result=await streamZipEntry(file,entry,{hash:true,maxOutputBytes:MAX_TOTAL,write:x=>w.write(x),drain:()=>w.drain()});totalOut+=result.outputBytes;if(totalOut>MAX_TOTAL||(!streaming&&totalOut>FALLBACK_PACKAGE))throw new Error('Pacote grande demais para o armazenamento disponível deste navegador. Use o app Android ou armazenamento streaming.');if(result.outputBytes<=0)throw new Error(`PDF vazio no pacote: ${a.incoming.file}`);if(result.sha256!==expected)throw new Error(`Falha de integridade em ${a.incoming.code}: SHA-256 do PDF não corresponde ao catálogo.`);records.push(await w.close());a.next.file_path=physical;a.next.file=a.incoming.file;a.next.package_version=m.packageVersion;a.next.sha256=expected}catch(error){await w.abort();throw error}done++;onProgress?.({phase:'write',done,total,code:a.incoming.code})}const preparedIds=new Set(records.map(r=>String(r.id)));removeIds=cp.removedFileIds.filter(id=>!preparedIds.has(String(id)));snapshot=await documentFileService.commitPreparedRecords({records,removeIds});committed=true;try{await documentRepository.replace(cp.nextCatalog);catalogDone=true}catch(error){await documentFileService.rollbackPreparedRecords({records,removeIds,snapshot});committed=false;throw error}try{await documentFileService.finalizePreparedRecords({records,removeIds,snapshot})}catch(error){console.warn('[BYD Skyrail] Falha ao limpar arquivo documental obsoleto:',error)}const after=await documentRepository.getAll({includeInactive:true});try{notificationService.recordPackage(before,after,{packageVersion:m.packageVersion,createdAt:cp.nextCatalog.generatedAt})}catch(error){console.warn('[BYD Skyrail] Não foi possível registrar notificações locais:',error)}return documentRepository.info()}catch(error){if(committed&&!catalogDone)try{await documentFileService.rollbackPreparedRecords({records,removeIds,snapshot})}catch{}if(!committed)await documentFileService.discardPreparedRecords(records);const message=text(error?.message||error);if(/space|quota|enospc/i.test(message))throw new Error('Não há espaço suficiente para concluir a atualização.');throw new Error(`Importação interrompida sem substituir o catálogo ativo: ${message}`)}}
+async function importNative(onProgress){const before=await documentRepository.getAll({includeInactive:true});let listener=null;try{if(onProgress)listener=await NativePackageImporter.addListener('progress',e=>onProgress(e));await NativePackageImporter.importPackage();await documentRepository.load({force:true});const after=await documentRepository.getAll({includeInactive:true}),info=await documentRepository.info();try{notificationService.recordPackage(before,after,{packageVersion:info.packageVersion,createdAt:info.generatedAt})}catch(error){console.warn('[BYD Skyrail] Não foi possível registrar notificações locais:',error)}return info}finally{try{await listener?.remove()}catch{}}}
+export class PackageImportService{usesNativePicker(){return Capacitor.isNativePlatform()&&Capacitor.getPlatform()==='android'}async inspect(file,onProgress){return inspectWeb(file,onProgress)}async commit(plan,onProgress){return commitWeb(plan,onProgress)}async import(file,onProgress){if(this.usesNativePicker())return importNative(onProgress);return this.commit(await this.inspect(file,onProgress),onProgress)}}
 export const packageImportService=new PackageImportService();

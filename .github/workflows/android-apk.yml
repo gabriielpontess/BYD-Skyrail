@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - feature/local-documents-v1
+      - feature/local-documents-v1-1
 
 jobs:
   apk:
