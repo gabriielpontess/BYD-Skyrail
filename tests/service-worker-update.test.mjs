@@ -15,3 +15,8 @@ assert.match(index,/__byd_swclean/,'limpeza deve recarregar de forma controlada 
 assert.doesNotMatch(index,/serviceWorker\.register\(/,'navegador web não deve registrar novo Service Worker');
 
 console.log('service-worker-update.test.mjs: ok');
+
+assert.match(index,/Promise\.race\(\[/,'bootstrap deve ter limite de tempo para limpeza do SW');
+assert.match(index,/timeout de 1500ms/,'timeout da limpeza não pode bloquear a inicialização');
+assert.match(index,/fase bootstrap:/,'diagnóstico deve indicar a fase exata da inicialização');
+assert.match(index,/setBootPhase\('app-module'\)/,'diagnóstico deve identificar a entrada do módulo principal');
