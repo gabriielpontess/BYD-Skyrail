@@ -63,7 +63,8 @@
           }
         } catch (error) { sw = `erro: ${error?.message || error}`; }
         const details = [
-          `build: PR8-sw-retired-2`,
+          `build: PR12-bootstrap-resilience-1`,
+          `fase bootstrap: ${globalThis.__BYD_BOOT_DIAG?.phase || 'não iniciada'}`,
           `tempo: ${Math.round((Date.now()-startedAt)/1000)}s`,
           `modo standalone: ${isStandalone() ? 'sim' : 'não'}`,
           `online: ${navigator.onLine ? 'sim' : 'não'}`,
@@ -85,6 +86,10 @@
     })();
   </script>
   <script type="module">
+    const setBootPhase = phase => {
+      if (globalThis.__BYD_BOOT_DIAG) globalThis.__BYD_BOOT_DIAG.phase = phase;
+    };
+
     async function retireLegacyServiceWorker() {
       if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return true;
       try {
@@ -117,27 +122,49 @@
     }
 
     async function bootApplication() {
-      const canBoot = await retireLegacyServiceWorker();
+      setBootPhase('service-worker-cleanup');
+      let cleanupTimer;
+      const canBoot = await Promise.race([
+        retireLegacyServiceWorker(),
+        new Promise(resolve => {
+          cleanupTimer = setTimeout(() => {
+            globalThis.__BYD_BOOT_DIAG?.errors?.push('SW cleanup: timeout de 1500ms; inicialização prosseguiu sem aguardar a limpeza.');
+            resolve(true);
+          }, 1500);
+        })
+      ]);
+      clearTimeout(cleanupTimer);
       if (!canBoot) return;
-      await import('./js/users/invite-onboarding.js');
+
+      setBootPhase('invite-onboarding');
+      import('./js/users/invite-onboarding.js').catch(error => {
+        console.error('[BYD Skyrail] Falha no módulo de ativação:', error);
+        globalThis.__BYD_BOOT_DIAG?.errors?.push(`Invite onboarding: ${error?.message || error}`);
+      });
+
       // A apresentação de role precisa observar o #app antes de app.js iniciar seu
       // boot assíncrono. Assim, o primeiro shell de CONTROLLER já é normalizado na
       // mesma entrega de mutação e nenhum cargo transitório vence a UI canônica.
+      setBootPhase('role-ux');
       await import('./js/role-ux.js');
+      setBootPhase('app-module');
       await import('./js/app.js');
+      setBootPhase('systems-ux');
       await import('./js/systems-ux.js');
+      setBootPhase('ux-adjustments');
       await import('./js/ux-adjustments.js');
+      setBootPhase('local-documents-ux');
       await import('./js/local-documents-ux.js');
+      setBootPhase('document-packager-ux');
       await import('./js/document-packager-ux.js');
+      setBootPhase('notifications-ux');
       await import('./js/notifications-ux.js');
+      setBootPhase('ui-refinement');
       await import('./js/ui-refinement.js');
+      setBootPhase('systemic-ux-guard');
       await import('./js/systemic-ux-guard.js');
+      setBootPhase('ready');
     }
-
-    bootApplication().catch(error => {
-      console.error('[BYD Skyrail] Falha crítica no bootstrap:', error);
-      globalThis.__BYD_BOOT_DIAG?.errors?.push(`Bootstrap: ${error?.message || error}`);
-    });
   </script>
 </body>
 </html>
