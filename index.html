@@ -86,6 +86,8 @@
     })();
   </script>
   <script type="module">
+    let skipLegacySwRedirect = false;
+
     const setBootPhase = phase => {
       if (globalThis.__BYD_BOOT_DIAG) globalThis.__BYD_BOOT_DIAG.phase = phase;
     };
@@ -103,7 +105,7 @@
         await Promise.all(registrations.map(registration => registration.unregister()));
         if ('caches' in globalThis) await Promise.all(bydCaches.map(key => caches.delete(key)));
 
-        if ((hadController || registrations.length || bydCaches.length) && pass < 2) {
+        if ((hadController || registrations.length || bydCaches.length) && pass < 2 && !skipLegacySwRedirect) {
           url.searchParams.set('__byd_swclean', String(pass + 1));
           location.replace(url.toString());
           return false;
@@ -128,6 +130,7 @@
         retireLegacyServiceWorker(),
         new Promise(resolve => {
           cleanupTimer = setTimeout(() => {
+            skipLegacySwRedirect = true;
             globalThis.__BYD_BOOT_DIAG?.errors?.push('SW cleanup: timeout de 1500ms; inicialização prosseguiu sem aguardar a limpeza.');
             resolve(true);
           }, 1500);
