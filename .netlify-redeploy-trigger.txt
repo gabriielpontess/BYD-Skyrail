@@ -1,0 +1,1 @@
+Temporary Netlify deploy trigger for the web bootstrap fix in PR #13. This file will be removed after deployment.
