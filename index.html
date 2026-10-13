@@ -168,6 +168,13 @@
       await import('./js/systemic-ux-guard.js');
       setBootPhase('ready');
     }
+
+    bootApplication().catch(error => {
+      const failedPhase = globalThis.__BYD_BOOT_DIAG?.phase || 'desconhecida';
+      setBootPhase('failed');
+      console.error('[BYD Skyrail] Falha crítica no bootstrap:', error);
+      globalThis.__BYD_BOOT_DIAG?.errors?.push(`Bootstrap [${failedPhase}]: ${error?.message || error}`);
+    });
   </script>
 </body>
 </html>
