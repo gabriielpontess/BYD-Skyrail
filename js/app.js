@@ -14,10 +14,13 @@ import {
 import { listLocal, getFile } from './db.js';
 import { syncAll, lastSync } from './sync.js';
 import { sortDocuments, disciplines } from './model.js';
+import { withTimeout } from './async-utils.js';
 
 const app = document.querySelector('#app');
 const toastEl = document.querySelector('#toast');
 const RECENT_KEY = 'byd-skyrail:recent-documents';
+const AUTH_BOOT_TIMEOUT_MS = 3200;
+const AUTH_REQUEST_TIMEOUT_MS = 10000;
 let toastTimer;
 
 const state = {
@@ -43,6 +46,10 @@ const esc = value => String(value ?? '')
 const safeJson = (value, fallback) => {
   try { return JSON.parse(value); } catch { return fallback; }
 };
+
+function showBootLoading() {
+  app.innerHTML = '<main role="status" aria-live="polite" style="min-height:100svh;display:grid;place-items:center;padding:24px;background:#f4f7fb;color:#0b2f5b"><section style="width:min(420px,100%);padding:24px;background:#fff;border:1px solid #d7e1ec;border-radius:16px;box-shadow:0 12px 40px rgba(15,23,42,.08);text-align:center"><strong style="font-size:20px">BYD Skyrail</strong><p style="margin:12px 0 0;color:#52657a">Validando sua sessão e preparando o sistema…</p></section></main>';
+}
 
 function toast(message, error = false) {
   clearTimeout(toastTimer);
@@ -108,7 +115,7 @@ function navItems() { const items = [['home','home','Home'],['documents','file',
 
 function login(message = '') {
   app.innerHTML = `<main class="login-shell"><section class="login-visual" aria-hidden="true"><div class="login-visual-copy"><div class="login-gold-line"></div><h2>Documentação certa.<br>Em qualquer lugar.</h2><p>Acesse, sincronize e consulte os documentos oficiais do BYD Skyrail em campo, inclusive sem conexão.</p></div></section><section class="login-panel"><div class="login-card"><div style="color:var(--blue-800)">${brandHtml()}</div><h1>Acessar o sistema</h1><p>Entre com sua conta autorizada.</p>${message ? `<div class="login-error" role="alert">${esc(message)}</div>` : ''}<form id="login-form" class="login-form"><label class="field"><span>E-mail</span><input type="email" name="email" autocomplete="username" required></label><label class="field"><span>Senha</span><input type="password" name="password" autocomplete="current-password" required></label><button class="btn btn-primary" type="submit">Entrar ${icon('arrow')}</button></form></div></section></main>`;
-  document.querySelector('#login-form').onsubmit = async event => { event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true; try { const form = new FormData(event.currentTarget); state.member = await signIn(form.get('email'), form.get('password')); if (!state.member) throw new Error('Usuário sem acesso ativo.'); cacheMember(); await bootAuthenticated(); } catch (error) { login(error.message); } };
+  document.querySelector('#login-form').onsubmit = async event => { event.preventDefault(); const button = event.currentTarget.querySelector('button'); button.disabled = true; try { const form = new FormData(event.currentTarget); state.member = await withTimeout(signIn(form.get('email'), form.get('password')), AUTH_REQUEST_TIMEOUT_MS, 'O servidor de autenticação não respondeu em 10 segundos. Tente novamente.'); if (!state.member) throw new Error('Usuário sem acesso ativo.'); cacheMember(); await bootAuthenticated(); } catch (error) { login(error.message); } };
 }
 function cacheMember() { localStorage.setItem('byd-skyrail-member-cache', JSON.stringify({display_name:state.member.display_name,role:state.member.role,user_id:state.member.user_id,user:state.member.user?{email:state.member.user.email,user_metadata:state.member.user.user_metadata||{}}:undefined})); }
 
@@ -160,8 +167,59 @@ function openUserEditor(member){const backdrop=document.createElement('div');bac
 function renderHistory(content){content.innerHTML=`<article class="panel-card"><h3>Histórico de atividades</h3><table class="audit-table"><thead><tr><th>Documento</th><th>Evento</th><th>Revisão</th><th>Sistema</th><th>Data</th></tr></thead><tbody>${state.audit.map(item=>`<tr><td>${esc(item.code)}</td><td>${esc(eventLabel(item.event_type))}</td><td>Rev. ${esc(item.revision)}</td><td>${esc(item.discipline)}</td><td>${esc(formatDate(item.recorded_at,{dateStyle:'short',timeStyle:'short'}))}</td></tr>`).join('')||'<tr><td colspan="5">Sem histórico.</td></tr>'}</tbody></table></article>`;}
 
 async function doSync(rerender=true){if(!navigator.onLine)return toast('Sem internet para sincronizar.',true);const buttons=[...document.querySelectorAll('[data-sync]')];buttons.forEach(button=>button.disabled=true);try{const result=await syncAll((index,total,code)=>toast(`Sincronizando ${index}/${total} · ${code}`));await loadLocal();updateConnectivity();toast(`Sincronização concluída: ${result.total} documento(s), ${result.downloaded} atualizado(s).`);if(rerender)await renderCurrentView();return result;}catch(error){toast(error.message,true);}finally{buttons.forEach(button=>button.disabled=false);}}
-async function bootAuthenticated(){await loadLocal();shell();state.view=routeFromHash();updateNav();if(navigator.onLine)await doSync(false);await renderCurrentView();}
-async function boot(){try{if(!state.member){if(navigator.onLine){state.member=await currentMember();}else{state.member=safeJson(localStorage.getItem('byd-skyrail-member-cache')||'null',null);}}if(!state.member)return login();cacheMember();await bootAuthenticated();}catch(error){login(error.message);}}
+function setAppBootPhase(phase) {
+  if (globalThis.__BYD_BOOT_DIAG) globalThis.__BYD_BOOT_DIAG.appPhase = phase;
+}
+async function bootAuthenticated() {
+  setAppBootPhase('local-data');
+  await loadLocal();
+  setAppBootPhase('render-shell');
+  shell();
+  state.view = routeFromHash();
+  updateNav();
+  setAppBootPhase('render-view');
+  await renderCurrentView();
+  setAppBootPhase('ready');
+  // A interface local deve aparecer antes de qualquer sincronização de rede.
+  if (navigator.onLine) void doSync(true);
+}
+async function boot() {
+  let usingCachedSession = false;
+  try {
+    if (!state.member) {
+      if (navigator.onLine) {
+        showBootLoading();
+        try {
+          state.member = await withTimeout(
+            currentMember(),
+            AUTH_BOOT_TIMEOUT_MS,
+            'A validação da sessão excedeu 3,2 segundos. Verifique a conexão e tente novamente.'
+          );
+        } catch (error) {
+          if (error?.name !== 'TimeoutError') throw error;
+          const cached = safeJson(localStorage.getItem('byd-skyrail-member-cache') || 'null', null);
+          if (!cached) throw error;
+          state.member = cached;
+          usingCachedSession = true;
+        }
+      } else {
+        state.member = safeJson(localStorage.getItem('byd-skyrail-member-cache') || 'null', null);
+      }
+    }
+    if (!state.member) {
+      setAppBootPhase('login');
+      return login();
+    }
+    cacheMember();
+    await bootAuthenticated();
+    if (usingCachedSession) {
+      toast('Servidor de autenticação sem resposta; sessão local usada. Funções online podem falhar.', true);
+    }
+  } catch (error) {
+    setAppBootPhase('login-error');
+    login(error?.message || 'Não foi possível inicializar o sistema. Tente novamente.');
+  }
+}
 addEventListener('hashchange',async()=>{if(!state.member||!document.querySelector('#page'))return;state.view=routeFromHash();updateNav();await renderCurrentView();});
 addEventListener('online',async()=>{updateConnectivity();toast('Conexão restabelecida.');});
 addEventListener('offline',()=>{updateConnectivity();toast('Modo offline ativo.');});
