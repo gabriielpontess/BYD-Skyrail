@@ -20,3 +20,5 @@ assert.match(index,/Promise\.race\(\[/,'bootstrap deve ter limite de tempo para 
 assert.match(index,/timeout de 1500ms/,'timeout da limpeza não pode bloquear a inicialização');
 assert.match(index,/fase bootstrap:/,'diagnóstico deve indicar a fase exata da inicialização');
 assert.match(index,/setBootPhase\('app-module'\)/,'diagnóstico deve identificar a entrada do módulo principal');
+
+assert.match(index,/bootApplication\(\)\.catch\(/,'bootstrap deve ser invocado e capturar falhas críticas');
