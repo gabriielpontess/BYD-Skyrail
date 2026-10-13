@@ -64,7 +64,8 @@
         } catch (error) { sw = `erro: ${error?.message || error}`; }
         const details = [
           `build: PR12-bootstrap-resilience-1`,
-          `fase bootstrap: ${globalThis.__BYD_BOOT_DIAG?.phase || 'não iniciada'}`,
+          `fase módulos: ${globalThis.__BYD_BOOT_DIAG?.phase || 'não iniciada'}`,
+          `fase aplicação: ${globalThis.__BYD_BOOT_DIAG?.appPhase || 'não iniciada'}`,
           `tempo: ${Math.round((Date.now()-startedAt)/1000)}s`,
           `modo standalone: ${isStandalone() ? 'sim' : 'não'}`,
           `online: ${navigator.onLine ? 'sim' : 'não'}`,
@@ -166,7 +167,7 @@
       await import('./js/ui-refinement.js');
       setBootPhase('systemic-ux-guard');
       await import('./js/systemic-ux-guard.js');
-      setBootPhase('ready');
+      setBootPhase('modules-ready');
     }
 
     bootApplication().catch(error => {
