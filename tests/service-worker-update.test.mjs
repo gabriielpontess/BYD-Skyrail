@@ -18,7 +18,8 @@ console.log('service-worker-update.test.mjs: ok');
 
 assert.match(index,/Promise\.race\(\[/,'bootstrap deve ter limite de tempo para limpeza do SW');
 assert.match(index,/timeout de 1500ms/,'timeout da limpeza não pode bloquear a inicialização');
-assert.match(index,/fase bootstrap:/,'diagnóstico deve indicar a fase exata da inicialização');
+assert.match(index,/fase módulos:/,'diagnóstico deve indicar a fase de importação dos módulos');
+assert.match(index,/fase aplicação:/,'diagnóstico deve indicar a fase real da inicialização da aplicação');
 assert.match(index,/setBootPhase\('app-module'\)/,'diagnóstico deve identificar a entrada do módulo principal');
 
 assert.match(index,/bootApplication\(\)\.catch\(/,'bootstrap deve ser invocado e capturar falhas críticas');
